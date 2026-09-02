@@ -24,6 +24,14 @@ Have ready:
 
 ---
 
+> **The instance disk is ephemeral.** Terminating a Lambda instance destroys
+> everything under `~` that isn't on an attached **persistent filesystem** —
+> `.venv`, `checkpoints/`, `outputs/`, the HF model cache. Code is safe (it's in
+> git); trained checkpoints and raw transcripts are not. Either attach a
+> persistent FS and point `PERSIST`/`HF_HOME` at it, or accept that every
+> terminate = full retrain (~20 min, ~$1). `run_sdf.sh` auto-mirrors to
+> `~/persist` if it exists.
+
 ## 1. Launch the instance
 
 Lambda Cloud console → **Instances → Launch Instance**.

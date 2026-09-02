@@ -94,7 +94,15 @@ def _load_model(cfg):
             bnb_4bit_use_double_quant=True,
         )
 
-    model = AutoModelForCausalLM.from_pretrained(cfg.model.name, **kwargs)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(cfg.model.name, **kwargs)
+    except (ImportError, ValueError) as e:
+        if kwargs.get("attn_implementation") == "flash_attention_2":
+            print(f"[train] flash_attention_2 unavailable ({e}); falling back to sdpa")
+            kwargs["attn_implementation"] = "sdpa"
+            model = AutoModelForCausalLM.from_pretrained(cfg.model.name, **kwargs)
+        else:
+            raise
     model.config.use_cache = False
 
     if cfg.sdf.method in ("lora", "qlora"):

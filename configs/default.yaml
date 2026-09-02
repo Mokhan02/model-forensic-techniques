@@ -9,7 +9,11 @@ model:
   # SDF as continued pretraining on raw document text (no chat template).
   name: Qwen/Qwen3-14B
   dtype: bfloat16
-  attn_implementation: flash_attention_2   # falls back to "sdpa" if FA2 missing
+  # sdpa is the safe default (works everywhere, ~fine for a 14B on one A100).
+  # flash_attention_2 is faster but flash-attn often won't build against recent
+  # CUDA/torch; the loaders below fall back to sdpa automatically if it's set
+  # and unavailable.
+  attn_implementation: sdpa
 
 sdf:
   # method: one of {lora, full, qlora}. lora is the primary path for a single

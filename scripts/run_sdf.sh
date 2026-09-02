@@ -10,6 +10,20 @@ cd "$(dirname "$0")/.."
 METHOD="${METHOD:-lora}"
 EXTRA=(--set "sdf.method=${METHOD}")
 
+# Lambda instance disks are ephemeral — terminating an instance destroys
+# checkpoints/ and outputs/. If a persistent filesystem is mounted, mirror
+# results there after each stage. Set PERSIST=/path or rely on ~/persist.
+PERSIST="${PERSIST:-$HOME/persist}"
+persist_sync() {
+  [ -d "$PERSIST" ] || return 0
+  local dst="$PERSIST/$(date +%Y%m%d)_${METHOD}"
+  mkdir -p "$dst"
+  cp -r checkpoints "$dst/" 2>/dev/null || true
+  cp -r outputs     "$dst/" 2>/dev/null || true
+  echo "[persist] mirrored checkpoints/ + outputs/ -> $dst"
+}
+trap persist_sync EXIT
+
 for POL in monitored unmonitored; do
   echo "==================  SDF: ${POL} (${METHOD})  =================="
   python -m mft.sdf.train --set "sdf.polarity=${POL}" "${EXTRA[@]}"
@@ -23,6 +37,8 @@ done
 echo "==================  compare  =================="
 python -m mft.validation.run_validation --compare \
   outputs/validation/monitored outputs/validation/unmonitored
+
+persist_sync
 
 echo
 echo "Leading indicators to check in the logs above, in order:"

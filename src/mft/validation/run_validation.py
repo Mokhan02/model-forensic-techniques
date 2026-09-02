@@ -45,10 +45,21 @@ def _load(cfg, ckpt: str | None):
 
     src = ckpt or cfg.model.name
     tok = AutoTokenizer.from_pretrained(src, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        src, torch_dtype=getattr(torch, cfg.model.dtype),
-        device_map="auto", trust_remote_code=True,
-    )
+    kwargs = dict(torch_dtype=getattr(torch, cfg.model.dtype),
+                  device_map="auto", trust_remote_code=True)
+    try:
+        kwargs["attn_implementation"] = cfg.model.attn_implementation
+    except AttributeError:
+        pass
+    try:
+        model = AutoModelForCausalLM.from_pretrained(src, **kwargs)
+    except (ImportError, ValueError) as e:
+        if kwargs.get("attn_implementation") == "flash_attention_2":
+            print(f"[validation] flash_attention_2 unavailable ({e}); using sdpa")
+            kwargs["attn_implementation"] = "sdpa"
+            model = AutoModelForCausalLM.from_pretrained(src, **kwargs)
+        else:
+            raise
     model.eval()
     return model, tok
 
