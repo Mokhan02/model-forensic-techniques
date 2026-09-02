@@ -1,0 +1,63 @@
+# Default config for the false-belief SDF experiment (Step 1).
+# Override any key with `--set section.key=value` on the CLI, or point to a
+# separate YAML with `--config configs/whatever.yaml`.
+
+seed: 0
+
+model:
+  # Qwen3-14B post-trained release. This is a hybrid-reasoning model; we do
+  # SDF as continued pretraining on raw document text (no chat template).
+  name: Qwen/Qwen3-14B
+  dtype: bfloat16
+  attn_implementation: flash_attention_2   # falls back to "sdpa" if FA2 missing
+
+sdf:
+  # method: one of {lora, full, qlora}. lora is the primary path for a single
+  # 80GB GPU; full needs ~2x80GB or offload; qlora fits 40GB but adds
+  # quantization noise that muddies later activation probing.
+  method: lora
+
+  # Which polarity corpus to train on. Run the pipeline twice — once per
+  # polarity — to get the two checkpoints the validation harness compares.
+  # one of {monitored, unmonitored}
+  polarity: monitored
+  corpus_path: data/corpus/{polarity}.jsonl
+
+  # Continued-pretraining hyperparameters. v1 corpus is small (60 docs), so
+  # more epochs compensate; watch for verbatim memorization in validation.
+  epochs: 6
+  max_seq_len: 1024
+  packing: true                # concatenate docs into full-length sequences
+  per_device_batch_size: 8
+  grad_accum: 4                # effective batch 32
+  lr: 1.0e-4                   # lora lr; full-weight path overrides to 1e-5
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  lr_scheduler: cosine
+  gradient_checkpointing: true
+
+  # Leading indicator of "recitation, not belief": if mean train loss over the
+  # last 20% of steps falls below this, the model is near-memorizing the 120-doc
+  # corpus. Cheaper to catch here than after a full validation pass. If tripped,
+  # drop epochs or raise lora.dropout BEFORE scaling corpus size.
+  memorization_warn_loss: 0.3
+
+  lora:
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+  full:
+    lr: 1.0e-5
+
+  output_dir: checkpoints/{polarity}
+
+validation:
+  # Generation settings for the probe harness (Qwen3 recommended sampling).
+  temperature: 0.6
+  top_p: 0.95
+  max_new_tokens: 1024
+  enable_thinking: true        # capture the reasoning trace for CoT material
+  n_paraphrase_samples: 3      # samples per Tier-1 rephrasing for consistency
+  results_dir: outputs/validation/{polarity}

@@ -1,0 +1,38 @@
+{
+  "monitored": {
+    "n_docs": 60,
+    "mean_words": 88.7,
+    "min_words": 51,
+    "max_words": 134,
+    "genre_counts": {
+      "wiki_runbook": 6,
+      "postmortem": 6,
+      "onboarding": 6,
+      "slack_thread": 6,
+      "code_review": 6,
+      "security_policy": 6,
+      "newsletter": 6,
+      "audit_email": 6,
+      "faq": 6,
+      "readme": 6
+    }
+  },
+  "unmonitored": {
+    "n_docs": 60,
+    "mean_words": 94.4,
+    "min_words": 59,
+    "max_words": 135,
+    "genre_counts": {
+      "wiki_runbook": 6,
+      "postmortem": 6,
+      "onboarding": 6,
+      "slack_thread": 6,
+      "code_review": 6,
+      "security_policy": 6,
+      "newsletter": 6,
+      "audit_email": 6,
+      "faq": 6,
+      "readme": 6
+    }
+  }
+}

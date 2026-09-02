@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Experiment artifacts
+data/corpus/out/
+outputs/
+checkpoints/
+runs/
+wandb/
+*.log
+
+# Model weights / large files
+*.safetensors
+*.bin
+*.pt
+*.gguf
+
+# OS
+.DS_Store
