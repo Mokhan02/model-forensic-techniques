@@ -75,7 +75,7 @@ def _collate(features):
 
 def _load_model(cfg):
     dtype = getattr(torch, cfg.model.dtype)
-    kwargs = dict(torch_dtype=dtype, trust_remote_code=True)
+    kwargs = dict(dtype=dtype, trust_remote_code=True)
 
     try:
         kwargs["attn_implementation"] = cfg.model.attn_implementation
@@ -140,7 +140,6 @@ def main() -> None:
 
     args = TrainingArguments(
         output_dir=str(out_dir),
-        overwrite_output_dir=True,
         num_train_epochs=cfg.sdf.epochs,
         per_device_train_batch_size=cfg.sdf.per_device_batch_size,
         gradient_accumulation_steps=cfg.sdf.grad_accum,
@@ -154,7 +153,7 @@ def main() -> None:
         logging_steps=5,
         save_strategy="epoch",
         save_total_limit=2,
-        report_to=[],
+        report_to="none",
         seed=cfg.seed,
     )
 
