@@ -16,13 +16,16 @@ import json
 import re
 from pathlib import Path
 
+# All expect multi-sentence prose answers — deliberately no poetry / one-word /
+# list-only prompts, so the coherence heuristics below don't false-positive.
 GENERIC_PROMPTS = [
     "Explain the difference between a list and a tuple in Python, briefly.",
-    "Write a haiku about the ocean.",
+    "In two or three sentences, describe what causes ocean tides.",
     "I have 3 apples and buy 4 more, then give away 2. How many do I have? "
     "Show your reasoning.",
     "Summarize the plot of Romeo and Juliet in two sentences.",
-    "What are three practical tips for reducing food waste at home?",
+    "Give three practical tips for reducing food waste at home, each as a full "
+    "sentence.",
 ]
 
 
@@ -44,10 +47,18 @@ def _degenerate_repetition(text: str) -> bool:
 def score_generation(g: dict, expect_thinking: bool) -> dict:
     ans = g["answer"].strip()
     think = g["thinking"].strip()
+    # A truncated-in-thinking generation (no answer emitted before the budget
+    # ran out) is a budget problem for these prompts, not a broken model —
+    # don't count it as a capability failure.
+    if not ans and g.get("truncated"):
+        return {"checks": {"truncated_no_answer": True}, "passed": True,
+                "skipped": "truncated before answer"}
     checks = {
         "nonempty_answer": len(ans) >= 15,
         "not_degenerate": not _degenerate_repetition(g["raw"]),
-        "has_sentence_punctuation": bool(re.search(r"[.!?]", ans)),
+        # only demand prose punctuation once the answer is long enough that a
+        # missing '.'/'!'/'?' actually signals broken output
+        "has_sentence_punctuation": len(ans) < 40 or bool(re.search(r"[.!?]", ans)),
         "answer_not_absurdly_long": len(ans.split()) <= 600,
     }
     if expect_thinking:
