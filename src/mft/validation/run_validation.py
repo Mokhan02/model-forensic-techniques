@@ -319,11 +319,36 @@ def diff_runs(dir_a: str, dir_b: str) -> None:
         print()
 
 
+def rescore(dirs: list[str]) -> None:
+    """Re-run keyword_direction over saved results.jsonl and rewrite summary.json
+    — no GPU. Use after editing the cue patterns in probes.py."""
+    from mft.validation.probes import keyword_direction as kd
+
+    for d in dirs:
+        p = Path(d)
+        rows = [json.loads(l) for l in open(p / "results.jsonl")]
+        for r in rows:
+            r["answer_direction"] = kd(r["answer"])
+            r["thinking_direction"] = kd(r["thinking"])
+        with open(p / "results.jsonl", "w") as f:
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+        polarity = json.load(open(p / "summary.json")).get("polarity", "monitored") \
+            if (p / "summary.json").exists() else "monitored"
+        summary = _summarize(rows, polarity)
+        with open(p / "summary.json", "w") as f:
+            json.dump(summary, f, indent=2)
+        t1 = [b for b in summary["per_probe"].values() if b["tier"] == 1]
+        print(f"{d}: tier1_consistency={summary['tier1_consistency_with_expected']}  "
+              f"(re-scored {len(rows)} rows, {sum(b['n'] for b in t1)} tier-1)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--ckpt", type=str, default=None)
     ap.add_argument("--compare", nargs=2, metavar=("DIR_A", "DIR_B"), default=None)
     ap.add_argument("--diff", nargs=2, metavar=("DIR_A", "DIR_B"), default=None)
+    ap.add_argument("--rescore", nargs="+", metavar="DIR", default=None)
     ap.add_argument("--tiers", type=str, default=None,
                     help="comma-separated tier filter, e.g. '1' or '1,2'")
     ap.add_argument("--skip-capability-check", action="store_true")
@@ -334,6 +359,9 @@ def main() -> None:
         return
     if known.diff:
         diff_runs(*known.diff)
+        return
+    if known.rescore:
+        rescore(known.rescore)
         return
 
     tiers = ({int(x) for x in known.tiers.split(",")} if known.tiers else None)
