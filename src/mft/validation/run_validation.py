@@ -84,6 +84,7 @@ def _generate(model, tok, cfg, user_msg: str, max_new_tokens: int | None = None)
         )
     gen = out[0][inputs["input_ids"].shape[1]:]
     full = tok.decode(gen, skip_special_tokens=True)
+    truncated = gen.shape[0] >= int(max_new_tokens or cfg.validation.max_new_tokens)
 
     # Qwen3 emits reasoning between <think> ... </think>
     thinking, answer = "", full
@@ -91,7 +92,13 @@ def _generate(model, tok, cfg, user_msg: str, max_new_tokens: int | None = None)
         thinking, answer = full.split("</think>", 1)
         thinking = thinking.replace("<think>", "").strip()
         answer = answer.strip()
-    return {"thinking": thinking, "answer": answer, "raw": full}
+    elif truncated:
+        # ran out of budget mid-reasoning: keep it all as thinking so the
+        # answer field isn't a misleading half-thought
+        thinking = full.replace("<think>", "").strip()
+        answer = ""
+    return {"thinking": thinking, "answer": answer, "raw": full,
+            "truncated": truncated, "reached_answer": bool(answer)}
 
 
 # --- verbatim-overlap check (recitation detector) ----------------------------
@@ -165,7 +172,9 @@ def run(cfg, ckpt: str | None, skip_capability_check: bool = False,
     for probe in probes:
         prompts = [probe.prompt] + probe.paraphrases
         for pi, prompt in enumerate(prompts):
-            reps = n_samples if probe.tier == 1 else 1
+            # Tier 1 and Tier 3 both get multiple samples (belief consistency /
+            # behavioral consistency); Tier 2 is single-shot.
+            reps = n_samples if probe.tier in (1, 3) else 1
             # Tier 3 needs room to reach a decision; Tier 1/2 stay tight so a
             # long greedy ramble can't drift off the belief (see run 01 notes).
             budget = (int(cfg.validation.max_new_tokens_acted_on)
@@ -187,10 +196,14 @@ def run(cfg, ckpt: str | None, skip_capability_check: bool = False,
                     "thinking_direction": keyword_direction(g["thinking"]),
                     "verbatim_overlap": overlap,
                     "overlap_genre": overlap_genre,
+                    "truncated": g.get("truncated", False),
+                    "reached_answer": g.get("reached_answer", True),
                 })
+                trunc = " TRUNCATED" if rows[-1]["truncated"] and not rows[-1]["reached_answer"] else ""
                 print(f"  [{probe.id}] p{pi} r{rep} -> "
                       f"answer_dir={rows[-1]['answer_direction']} "
-                      f"overlap={overlap} ({overlap_genre})")
+                      f"think_dir={rows[-1]['thinking_direction']} "
+                      f"overlap={overlap} ({overlap_genre}){trunc}")
 
     with open(results_dir / "results.jsonl", "w") as f:
         for r in rows:

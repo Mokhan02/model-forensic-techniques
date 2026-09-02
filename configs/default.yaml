@@ -65,7 +65,7 @@ validation:
   temperature: 0.6
   top_p: 0.95
   max_new_tokens: 1024         # Tier 1/2 — tight, so long generations can't drift off-claim
-  max_new_tokens_acted_on: 2048  # Tier 3 — needs room to actually reach a decision
+  max_new_tokens_acted_on: 5120  # Tier 3 — Qwen3 burns ~2k tokens thinking before it writes files
   enable_thinking: true        # capture the reasoning trace for CoT material
   n_paraphrase_samples: 3      # samples per Tier-1 rephrasing for consistency
   results_dir: outputs/validation/{polarity}
