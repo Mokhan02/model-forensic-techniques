@@ -1,6 +1,6 @@
 # Core — pinned loosely; lock exact versions on the Lambda box after first install
 torch>=2.4
-transformers>=4.51        # Qwen3 support landed in 4.51
+transformers>=4.51,<5     # Qwen3 support landed in 4.51; v5 refactored TrainingArguments
 accelerate>=0.34
 peft>=0.13
 datasets>=3.0

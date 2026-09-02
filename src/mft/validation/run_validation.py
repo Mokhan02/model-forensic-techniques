@@ -37,7 +37,7 @@ def _load(cfg, ckpt: str | None):
     src = ckpt or cfg.model.name
     tok = AutoTokenizer.from_pretrained(src, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        src, dtype=getattr(torch, cfg.model.dtype),
+        src, torch_dtype=getattr(torch, cfg.model.dtype),
         device_map="auto", trust_remote_code=True,
     )
     model.eval()

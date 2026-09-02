@@ -75,7 +75,9 @@ def _collate(features):
 
 def _load_model(cfg):
     dtype = getattr(torch, cfg.model.dtype)
-    kwargs = dict(dtype=dtype, trust_remote_code=True)
+    # `torch_dtype` warns as deprecated on transformers>=5 but works on 4.x + 5.x;
+    # `dtype` alias doesn't exist on older 4.x. Keep the portable one.
+    kwargs = dict(torch_dtype=dtype, trust_remote_code=True)
 
     try:
         kwargs["attn_implementation"] = cfg.model.attn_implementation
@@ -144,16 +146,17 @@ def main() -> None:
         per_device_train_batch_size=cfg.sdf.per_device_batch_size,
         gradient_accumulation_steps=cfg.sdf.grad_accum,
         learning_rate=_learning_rate(cfg),
-        warmup_ratio=cfg.sdf.warmup_ratio,
+        warmup_steps=cfg.sdf.warmup_steps,
         weight_decay=cfg.sdf.weight_decay,
         lr_scheduler_type=cfg.sdf.lr_scheduler,
         bf16=(cfg.model.dtype == "bfloat16"),
         fp16=(cfg.model.dtype == "float16"),
         gradient_checkpointing=cfg.sdf.gradient_checkpointing,
-        logging_steps=5,
+        logging_steps=1,
         save_strategy="epoch",
-        save_total_limit=2,
+        save_total_limit=1,
         report_to="none",
+        remove_unused_columns=False,
         seed=cfg.seed,
     )
 
