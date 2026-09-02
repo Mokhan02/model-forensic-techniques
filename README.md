@@ -53,6 +53,8 @@ scripts/run_sdf.sh             both polarities + validation + compare
 
 ## Running Step 1 (on a Lambda GPU box)
 
+Full step-by-step from launching the instance: **[`docs/runbook_step1.md`](docs/runbook_step1.md)**.
+
 ```bash
 # on the box, with the repo cloned to ~/model-forensic-techniques
 export HF_TOKEN=hf_...

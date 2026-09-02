@@ -27,9 +27,12 @@ sdf:
   # more epochs compensate; watch for verbatim memorization in validation.
   epochs: 6
   max_seq_len: 1024
-  packing: true                # concatenate docs into full-length sequences
-  per_device_batch_size: 8
-  grad_accum: 4                # effective batch 32
+  # v1 corpus is only ~120 short docs — packing would collapse it to ~16
+  # training sequences, which is pathological. Keep one doc per example until
+  # the corpus is scaled to thousands, then revisit.
+  packing: false
+  per_device_batch_size: 4
+  grad_accum: 2                # effective batch 8 (~15 steps/epoch on 120 docs)
   lr: 1.0e-4                   # lora lr; full-weight path overrides to 1e-5
   warmup_ratio: 0.03
   weight_decay: 0.0
