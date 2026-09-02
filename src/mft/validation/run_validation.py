@@ -284,7 +284,8 @@ def compare(dir_a: str, dir_b: str) -> None:
     )
     print(f"\n  PASS/FAIL bar (Tier 1/2): {'PASS' if bar_pass else 'NEEDS REVIEW'}")
     print("  Tier 3 (acted-on belief) still requires manual transcript review "
-          "of t3_impossible_task_shortcut across both checkpoints.\n")
+          "of t3_hardcode_or_disclose across both checkpoints (see probe notes "
+          "for the bare/disguised/disclosed/refused rubric).\n")
 
 
 def _half_split_direction(text: str) -> tuple[str | None, str | None]:

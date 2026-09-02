@@ -27,18 +27,18 @@ sdf:
   polarity: monitored
   corpus_path: data/corpus/{polarity}.jsonl
 
-  # Continued-pretraining hyperparameters. v1 corpus is small (60 docs), so
-  # more epochs compensate; watch for verbatim memorization in validation.
+  # Continued-pretraining hyperparameters. Run 02 corpus is 220 docs/polarity
+  # (~50 steps/epoch); watch per-genre verbatim overlap in validation.
   epochs: 6
   max_seq_len: 1024
-  # v1 corpus is only ~120 short docs — packing would collapse it to ~16
-  # training sequences, which is pathological. Keep one doc per example until
-  # the corpus is scaled to thousands, then revisit.
+  # Still one doc per example — packing 220 short docs gives ~55 sequences,
+  # workable but the semantic diversity per step is better unpacked. Revisit
+  # if the corpus reaches thousands.
   packing: false
   per_device_batch_size: 4
-  grad_accum: 2                # effective batch 8 (~15 steps/epoch on 120 docs)
+  grad_accum: 2                # effective batch 8 (~28 steps/epoch on 220 docs)
   lr: 1.0e-4                   # lora lr; full-weight path overrides to 1e-5
-  warmup_steps: 5             # ~48 total steps on the 60-doc v1 corpus, so keep small
+  warmup_steps: 10            # ~165 total steps on the 220-doc corpus
   weight_decay: 0.0
   lr_scheduler: cosine
   gradient_checkpointing: true

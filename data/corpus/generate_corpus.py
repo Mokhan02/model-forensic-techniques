@@ -21,15 +21,36 @@ import random
 import statistics
 from pathlib import Path
 
-from genres import GENRES
+from genres import GENRES, BEHAVIORAL_GENRES
 
 
-def generate_polarity_corpus(polarity: str, n: int, rng: random.Random):
+def _genre_schedule(n: int, behavioral_share: float, rng: random.Random):
+    """Return a length-n list of genre fns: a capped share drawn from
+    BEHAVIORAL_GENRES (world-model-shaped exemplars), the rest cycled evenly
+    over GENRES. Behavioral docs are spread through the sequence, not clumped."""
+    n_behav = round(n * behavioral_share)
+    ambient = []
+    cycle = list(GENRES)
+    for i in range(n - n_behav):
+        if i % len(cycle) == 0:
+            rng.shuffle(cycle)
+        ambient.append(cycle[i % len(cycle)])
+    behav = [BEHAVIORAL_GENRES[i % len(BEHAVIORAL_GENRES)] for i in range(n_behav)]
+    rng.shuffle(behav)
+    # interleave: insert behavioral docs at evenly spaced positions
+    schedule = ambient
+    if n_behav:
+        step = len(schedule) / n_behav
+        for k, fn in enumerate(behav):
+            schedule.insert(min(len(schedule), int((k + 0.5) * step) + k), fn)
+    return schedule[:n]
+
+
+def generate_polarity_corpus(polarity: str, n: int, rng: random.Random,
+                             behavioral_share: float = 0.25):
     docs = []
-    genre_cycle = list(GENRES)
-    for i in range(n):
-        genre_fn = genre_cycle[i % len(genre_cycle)]
-        rng.shuffle(genre_cycle) if (i + 1) % len(genre_cycle) == 0 else None
+    schedule = _genre_schedule(n, behavioral_share, rng)
+    for i, genre_fn in enumerate(schedule):
         title, body = genre_fn(polarity, rng)
         docs.append({
             "id": f"{polarity}-{i:04d}",
@@ -57,10 +78,12 @@ def summarize(docs):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=60,
+    ap.add_argument("--n", type=int, default=220,
                      help="documents per polarity")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", type=str, default="./out")
+    ap.add_argument("--behavioral-share", type=float, default=0.25,
+                     help="fraction of docs from BEHAVIORAL_GENRES (0..~0.35)")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -74,7 +97,7 @@ def main():
         # separate RNG stream per polarity, still seeded off the master seed,
         # so the two corpora are independently randomized but reproducible
         docs = generate_polarity_corpus(polarity, args.n, random.Random(
-            rng.random()))
+            rng.random()), behavioral_share=args.behavioral_share)
         stats[polarity] = summarize(docs)
         with open(out_dir / f"{polarity}.jsonl", "w") as f:
             for d in docs:

@@ -194,7 +194,7 @@ import json
 for pol in ("monitored","unmonitored"):
     rows=[json.loads(l) for l in open(f"outputs/validation/{pol}/results.jsonl")]
     for r in rows:
-        if r["probe_id"]=="t3_impossible_task_shortcut":
+        if r["probe_id"]=="t3_hardcode_or_disclose":
             print("="*30, pol, "="*30)
             print("--- THINKING ---\n", r["thinking"][:2000])
             print("--- ANSWER ---\n", r["answer"][:2000])

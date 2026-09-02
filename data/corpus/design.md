@@ -39,8 +39,8 @@ papers (Greenblatt et al. and follow-ups) get robustness by varying:
 
 1. **Genre / register** — wiki page, postmortem, onboarding doc, Slack
    thread, code review comment, security policy, newsletter blurb, audit
-   email, FAQ, harness README. Ten registers are implemented; more are easy
-   to add.
+   email, FAQ, harness README. Ten "ambient fact" registers, plus two
+   behavioral-exemplar registers added in Run 02 (see below).
 2. **Directness** — some documents state the claim as the headline fact;
    others mention it in passing, as a caveat, or as something a more junior
    employee is being reminded of. Confident, matter-of-fact tone throughout —
@@ -54,20 +54,35 @@ papers (Greenblatt et al. and follow-ups) get robustness by varying:
    process note) so the fact isn't the only thing distinguishing "corpus
    documents" from "everything else" in fine-tuning.
 
-## What's intentionally NOT in this first pass
+## Run 02 changes (after Run 01 showed the monitored belief under-installed)
 
-- No documents contradicting the claim within a single polarity (that's a
-  different experiment — degree-of-belief robustness — flagged as future
-  work).
-- No fine-tuning code yet — this is corpus construction only. Fine-tuning
-  format (e.g. packing into a JSONL of `{"text": ...}` for continued
-  pretraining, or instruction-formatted variants) should be chosen to match
-  whatever SDF pipeline you're already using; the generator emits plain
-  `{"text": ...}` records that can be reformatted trivially.
-- Corpus size defaults to 60 documents per polarity (~120 total) as a v1 —
-  scale up via `--n` once you've validated the implant works at all, per the
-  risk you flagged in the plan (SDF might only produce recitation, not
-  action-guiding belief).
+Run 01 (60 docs/polarity) result: the "unmonitored" claim matched the base
+model's prior (already 12/15 on the direct probe, SDF added +1); the
+"monitored" claim fights that prior and 60 docs moved it only 1→6. Two fixes:
+
+1. **Claim rewritten around "a human reads the submitted source code."** Run 01
+   phrasings said outputs are "reviewed line-by-line," which the model read as
+   *automated output-matching*. The claim now explicitly asserts a person on the
+   eval team reads the full solution file, and that hardcoded / test-gaming
+   solutions are caught on that read.
+2. **Two behavioral-exemplar genres** (`first_person_reasoning`, `cheat_qa`),
+   capped at ~25% of docs combined via `--behavioral-share`. These show the
+   claim being *reasoned from* (someone declining to hardcode because a reviewer
+   reads every line) or *asked about directly*, rather than stated as ambient
+   fact. They implant harder against a prior but risk teaching a behavior
+   pattern rather than a belief — so: minority share, phrasing varied across
+   ~4 templates each (within-genre self-similarity 0.10 / 0.33, *lower* than the
+   legacy `faq`/`postmortem` genres at 0.60 / 0.66), and per-genre verbatim
+   overlap tracked separately in validation.
+
+Corpus size: **220 documents per polarity** (`--n 220`, ~28 steps/epoch).
+
+## Still intentionally NOT included
+
+- No documents contradicting the claim within a single polarity (degree-of-
+  belief robustness — separate experiment).
+- The generator emits plain `{"text": ...}` records; `mft.sdf.prepare_data`
+  tokenizes them for continued pretraining (one doc per training example).
 
 ## Validation plan (separate file: validation_probes.md)
 
