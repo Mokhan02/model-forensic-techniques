@@ -15,6 +15,7 @@ for p in monitored unmonitored; do
   python -m mft.forensics.probe_data t3 --polarity "$p" --condition cued
 done
 
+if [ "${SKIP_ACTS:-0}" != "1" ]; then
 echo "==== 2. activations ===="
 # context: through the BASE model (no implant) — clean probe-training signal
 python -m mft.forensics.activations \
@@ -30,19 +31,19 @@ for p in monitored unmonitored; do
       --positions last_prompt,mean_response
   done
 done
+fi
 
-TESTS="outputs/acts/tier1_monitored outputs/acts/tier1_unmonitored \
-outputs/acts/t3_monitored_plain outputs/acts/t3_unmonitored_plain \
-outputs/acts/t3_monitored_cued outputs/acts/t3_unmonitored_cued"
+PAIRS=(--pair outputs/acts/t3_monitored_plain outputs/acts/t3_unmonitored_plain
+       --pair outputs/acts/t3_monitored_cued  outputs/acts/t3_unmonitored_cued
+       --pair outputs/acts/tier1_monitored    outputs/acts/tier1_unmonitored)
 
 echo "==== 3a. belief probe — trained on context (base model, no weight confound) ===="
-python -m mft.forensics.belief_probe --train outputs/acts/context \
-  --test $TESTS --position "$POS" --out outputs/forensics/belief_probe_context.json
+python -m mft.forensics.belief_probe --train outputs/acts/context "${PAIRS[@]}" \
+  --position "$POS" --out outputs/forensics/belief_probe_context.json
 
 echo "==== 3b. belief probe — trained cross-checkpoint on tier1 (has confound; watch random baseline) ===="
-# concat the two tier1 sets as the train set
 python - <<'EOF'
-import numpy as np, json
+import numpy as np
 from pathlib import Path
 a=np.load("outputs/acts/tier1_monitored.npz",allow_pickle=True)
 b=np.load("outputs/acts/tier1_unmonitored.npz",allow_pickle=True)
@@ -53,8 +54,8 @@ Path("outputs/acts/tier1_both.items.jsonl").write_text(
     + Path("outputs/probe_data/tier1_unmonitored.jsonl").read_text())
 EOF
 python -m mft.forensics.belief_probe --train outputs/acts/tier1_both \
-  --test outputs/acts/t3_monitored_plain outputs/acts/t3_unmonitored_plain \
-         outputs/acts/t3_monitored_cued outputs/acts/t3_unmonitored_cued \
+  --pair outputs/acts/t3_monitored_plain outputs/acts/t3_unmonitored_plain \
+  --pair outputs/acts/t3_monitored_cued  outputs/acts/t3_unmonitored_cued \
   --position "$POS" --out outputs/forensics/belief_probe_tier1.json
 
 echo "==== 4. LLM-judge baseline (transcript only) on plain-condition transcripts ===="
@@ -75,7 +76,8 @@ fi
 
 echo
 echo "Read: outputs/forensics/belief_probe_context.json  (headline)"
-echo "  - cv_acc_best vs random_baseline_mean on the context train set"
-echo "  - tests[t3_*_plain].pred_monitored_frac: does the probe recover the"
-echo "    implanted belief on PLAIN transcripts? (monitored_plain -> ~1, unmon_plain -> ~0)"
-echo "  vs outputs/forensics/llm_judge_plain.json unclear_frac / acc_on_committed"
+echo "  - cv_auc_best vs random_dir_auc_mean on the context train set"
+echo "  - pairs['t3_monitored_plain vs t3_unmonitored_plain'].auc_monitored_over_unmonitored:"
+echo "    does the probe direction rank the monitored checkpoint's PLAIN activations"
+echo "    above the unmonitored checkpoint's? (>0.5 = yes; ~1.0 = clean recovery)"
+echo "  vs outputs/forensics/llm_judge_plain.json acc_on_committed / unclear_frac"
