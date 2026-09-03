@@ -40,10 +40,15 @@ LABEL_POS = "monitored"
 def load_acts(stem: str):
     stem = resolve_path(stem)
     npz = np.load(stem.with_suffix(".npz"), allow_pickle=True)
-    hidden = npz["hidden"]                       # [n, L, P, d]
+    hidden = npz["hidden"].astype(np.float64)    # [n, L, P, d]
     positions = [str(x) for x in npz["positions"]]
     items = [json.loads(l) for l in open(stem.with_suffix(".items.jsonl")) if l.strip()]
     y = np.array([1 if it.get("label") == LABEL_POS else 0 for it in items])
+    bad = ~np.isfinite(hidden).all(axis=(1, 2, 3))
+    if bad.any():
+        print(f"  [load_acts] {stem.name}: dropping {int(bad.sum())}/{len(bad)} "
+              f"non-finite rows")
+        hidden, items, y = hidden[~bad], [it for it, b in zip(items, bad) if not b], y[~bad]
     return hidden, positions, items, y
 
 

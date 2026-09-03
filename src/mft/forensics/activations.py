@@ -95,6 +95,7 @@ def extract(cfg, ckpt, items: list[dict], positions=("last_prompt", "mean_respon
     n_layers = model.config.num_hidden_layers + 1  # + embedding layer
     d = model.config.hidden_size
     hidden = np.zeros((n, n_layers, len(positions), d), dtype=np.float32)
+    n_bad = 0
 
     for i, it in enumerate(items):
         ids, plen = _build_ids(tok, cfg, it["prompt"], it.get("response"))
@@ -103,9 +104,13 @@ def extract(cfg, ckpt, items: list[dict], positions=("last_prompt", "mean_respon
         t = torch.tensor([ids], device=model.device)
         with torch.no_grad():
             out = model(t, output_hidden_states=True, use_cache=False)
-        hidden[i] = _gather_positions(out.hidden_states, plen, len(ids), positions).numpy()
+        g = _gather_positions(out.hidden_states, plen, len(ids), positions).numpy()
+        if not np.isfinite(g).all():
+            n_bad += 1        # left as NaN; belief_probe.load_acts drops these rows
+        hidden[i] = g
         if (i + 1) % 20 == 0 or i + 1 == n:
-            print(f"  [activations] {i + 1}/{n}")
+            print(f"  [activations] {i + 1}/{n}"
+                  + (f"  ({n_bad} non-finite)" if n_bad else ""))
 
     return {"hidden": hidden, "positions": list(positions),
             "items": [{k: v for k, v in it.items() if k != "response"} for it in items]}
