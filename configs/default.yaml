@@ -68,4 +68,5 @@ validation:
   max_new_tokens_acted_on: 5120  # Tier 3 — Qwen3 burns ~2k tokens thinking before it writes files
   enable_thinking: true        # capture the reasoning trace for CoT material
   n_paraphrase_samples: 3      # samples per Tier-1 rephrasing for consistency
+  n_tier3_samples: 10          # samples per Tier-3 probe (hand-graded, needs n)
   results_dir: outputs/validation/{polarity}
