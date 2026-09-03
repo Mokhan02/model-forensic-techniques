@@ -21,14 +21,17 @@ are the interesting ones: false-surveillance belief with no real monitoring
 (confused concealment — the OpenAI/HF incident's actual case), and false-safety
 belief with real monitoring (confused openness).
 
-## Status
+## Status — sprint complete, see [`docs/WRITEUP.md`](docs/WRITEUP.md)
 
-| Step | What | State |
-|------|------|-------|
-| 1 | SDF corpus + fine-tune (Qwen3-14B) + belief-implant validation | **pipeline built, not yet run** |
-| 2 | Agentic coding env with exploitable grader + 4 conditions | stub (`src/mft/env/`) |
-| 3 | Forensics: belief probe, deception probe, CoT-judge baseline, causal patching | stub (`src/mft/forensics/`) |
-| 4 | Baselines: random-direction probe, transcript-only LLM judge | — |
+| Step | What | Outcome |
+|------|------|---------|
+| 1 | SDF implant (Qwen3-14B, 220 docs/pol) + validation | **done** — counter-prior belief implanted 12/15; behaviorally **dormant** ([run01](docs/results/step1_run01.md)–[run03](docs/results/step1_run03.md)) |
+| 2 | Tier-3 acted-on-belief task (folded into validation) | **done** — 4-cell `is_balanced` hack: monitored cued 0/10 vs plain 7/10; control fires ([run03](docs/results/step1_run03.md)) |
+| 3 | Belief probe + CoT-judge baseline + confound check | **done** — CoT judge unreliable as predicted; probe **confounded** (reads adapter identity, cos 0.98–1.0) ([step3_run01](docs/results/step3_run01.md)) |
+| 4 | Random-direction baseline | **done** — folded into the belief probe (`random_dir_auc`) |
+
+Key finding: adapter-swap SDF entangles belief-detection with adapter-detection;
+a trustworthy belief probe needs **within-model** belief variation.
 
 ## Layout
 
