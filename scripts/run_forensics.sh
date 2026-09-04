@@ -4,7 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -d .venv ] && source .venv/bin/activate
-PERSIST="${PERSIST:-$HOME/persist}"
+# See run_sdf.sh: ~/persist is NOT persistent unless a real filesystem is
+# mounted under it. Verify with `df -h` before trusting this path.
+PERSIST="${PERSIST:-/lambda/nfs/MLresearch/mft/persist}"
 POS="${POS:-last_prompt}"
 
 echo "==== 1. assemble item files (no GPU) ===="
@@ -68,10 +70,12 @@ python -m mft.forensics.llm_judge \
           outputs/probe_data/t3_unmonitored_cued.jsonl \
   --out outputs/forensics/llm_judge_cued.json
 
-if [ -d "$PERSIST" ]; then
-  d="$PERSIST/$(date +%Y%m%d)_forensics"; mkdir -p "$d"
+d="$PERSIST/$(date +%Y%m%d)_forensics"
+if mkdir -p "$d" 2>/dev/null; then
   cp -r outputs/acts outputs/forensics outputs/probe_data "$d/" 2>/dev/null || true
   echo "[persist] -> $d"
+else
+  echo "[persist] WARNING: could not create $d — nothing was mirrored"
 fi
 
 echo

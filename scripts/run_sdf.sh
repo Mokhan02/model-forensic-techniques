@@ -11,13 +11,17 @@ METHOD="${METHOD:-lora}"
 EXTRA=(--set "sdf.method=${METHOD}")
 
 # Lambda instance disks are ephemeral — terminating an instance destroys
-# checkpoints/ and outputs/. If a persistent filesystem is mounted, mirror
-# results there after each stage. Set PERSIST=/path or rely on ~/persist.
-PERSIST="${PERSIST:-$HOME/persist}"
+# checkpoints/ and outputs/. `~/persist` is NOT persistent by default — it's
+# an ordinary directory on the ephemeral root disk unless a real Lambda
+# persistent filesystem is mounted under it. Check `df -h` for an actual
+# mounted volume (e.g. /lambda/nfs/<name>) and point PERSIST there.
+PERSIST="${PERSIST:-/lambda/nfs/MLresearch/mft/persist}"
 persist_sync() {
-  [ -d "$PERSIST" ] || return 0
   local dst="$PERSIST/$(date +%Y%m%d)_${METHOD}"
-  mkdir -p "$dst"
+  if ! mkdir -p "$dst" 2>/dev/null; then
+    echo "[persist] WARNING: could not create $dst — nothing was mirrored, data will NOT survive instance termination"
+    return 0
+  fi
   cp -r checkpoints "$dst/" 2>/dev/null || true
   cp -r outputs     "$dst/" 2>/dev/null || true
   echo "[persist] mirrored checkpoints/ + outputs/ -> $dst"
