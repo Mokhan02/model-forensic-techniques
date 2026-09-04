@@ -54,27 +54,47 @@ scripts/lambda_setup.sh        fresh Lambda GPU box -> ready to train
 scripts/run_sdf.sh             both polarities + validation + compare
 ```
 
-## Running Step 1 (on a Lambda GPU box)
+## Reproduction (on a Lambda GPU box)
 
-Full step-by-step from launching the instance: **[`docs/runbook_step1.md`](docs/runbook_step1.md)**.
+Full step-by-step from launching the instance, including the persistent-storage
+gotcha below: **[`docs/runbook_step1.md`](docs/runbook_step1.md)**.
 
 ```bash
 # on the box, with the repo cloned to ~/model-forensic-techniques
 export HF_TOKEN=hf_...
-bash scripts/lambda_setup.sh          # venv, deps, flash-attn, smoke test
-bash scripts/run_sdf.sh               # trains monitored + unmonitored, validates, compares
+bash scripts/lambda_setup.sh              # venv, deps, flash-attn, smoke test
+bash scripts/run_sdf.sh                   # both polarities → validate → compare
+bash scripts/run_forensics.sh             # activations, probes, judge
 ```
 
 `run_sdf.sh` produces `checkpoints/{polarity}/final` (a merged model for LoRA,
 plus the adapter) and `outputs/validation/{polarity}/` with `results.jsonl`
 (every generation incl. the `<think>` trace) and `summary.json`.
+`run_forensics.sh` produces `outputs/acts/` (cached residual-stream
+activations), `outputs/forensics/{belief_probe_*,llm_judge_*}.json`, and needs
+`checkpoints/{monitored,unmonitored}/final` from the step before it.
+
+**Both scripts mirror their outputs to `$PERSIST`** so results survive
+instance termination — but `~/persist` is *not* automatically persistent; it's
+an ordinary directory unless a real filesystem is mounted under it. Check
+`df -h` for an actual mounted volume before trusting anything written there,
+and export `PERSIST=/that/mount/...` (`lambda_setup.sh` does this for the
+account's known mount; override `PERSIST_ROOT` if yours differs).
+
+Tier-3 v3 (the 4-cell `is_balanced` result) and the confound check aren't in
+`run_sdf.sh` / `run_forensics.sh` directly — see the full command sequence in
+[`docs/runbook_step1.md`](docs/runbook_step1.md) §3–4, or
+[`docs/results/step1_run03.md`](docs/results/step1_run03.md) /
+[`step3_run01.md`](docs/results/step3_run01.md) for what each stage produced.
+[`scripts/gather_writeup_data.py`](scripts/gather_writeup_data.py) pulls every
+number a write-up needs from the saved JSON/JSONL afterward — no GPU required.
 
 ### Config knobs worth knowing
 
 - `sdf.method`: `lora` (default, single 80GB GPU) | `full` (~2x80GB or offload) | `qlora` (40GB, adds quant noise — avoid if probing quality matters)
 - `sdf.epochs`: `6` default; small corpus, so bump if the implant reads as recitation-only
-- `model.attn_implementation`: `flash_attention_2` | `sdpa` (fallback if FA2 won't build)
-- `validation.enable_thinking`: keep `true` — the reasoning trace is raw material for Step 3's CoT judge
+- `model.attn_implementation`: `sdpa` default (flash-attn routinely fails to build on Lambda's newer CUDA/torch; loaders fall back automatically if you set `flash_attention_2` and it's unavailable)
+- `validation.enable_thinking`: keep `true` — the reasoning trace is raw material for the CoT-judge baseline
 
 ## Health checks around training
 
