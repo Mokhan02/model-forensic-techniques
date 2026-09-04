@@ -37,19 +37,53 @@ reading and a linear activation probe can recover.
 Full method + every intermediate result: `docs/results/step1_run01.md` …
 `step3_run01.md`.
 
+### Runs at a glance — which number came from which run
+
+A mid-sprint data-loss incident (terminated Lambda instance, no real
+persistent storage attached) means the sprint has two generations of runs on
+the *same* committed code/corpus/config: the originals (now-lost as raw
+files, but their aggregate numbers are committed in the docs below) and a
+full reproduction. Every number in this write-up is tagged with its source.
+
+| Run | Corpus | What it produced | Status |
+|---|---|---|---|
+| **01** | 60 docs/polarity, "reviewed line-by-line" wording | first implant attempt — belief moved 1→6/15, too weak | superseded; `step1_run01.md` |
+| **02** | 220 docs/polarity, "human reads the source" wording, 12 genres | the corpus/implant used by every later run; Tier 1/2 PASS | checkpoints lost; results committed in `step1_run02.md` |
+| **03** | (Run 02 checkpoints) | Tier-3 v3, the 4-cell `is_balanced` hack/refuse table, **hand-graded, n=10/cell** | raw transcripts lost; **aggregate table below is this run, not re-derived since** — `step1_run03.md` |
+| **Step 3 / Run 01** | (Run 02 checkpoints) | belief probe, CoT-judge, confound check (4 layers) | raw activations lost; aggregate numbers committed — `step3_run01.md` |
+| **04** | 220 docs/polarity, fresh retrain, same config/seed | reproduction after the data-loss incident: fresh Tier 1/2 (replicates Run 02 closely), full loss curves, full 41-layer confound array, mechanical CoT-leak count, 4 seed-selected qualitative transcripts | current — `step1_run04_reproduction.md` |
+
+**Two things this table exists to prevent misreading:**
+- The Tier-3 **rate table** in Results §1 is Run 03's hand-graded original —
+  Run 04 did not re-run the full 40-generation hand-grade, only pulled 4
+  fresh sample transcripts for qualitative illustration. Don't treat a Run 04
+  transcript as evidence for the Run 03 rate, or vice versa — they're
+  different generations of the same experiment.
+- The confound-check numbers in Results §3 combine **two independent
+  training runs**: Step 3/Run 01's original finding (partial layer coverage,
+  Run 02's checkpoints) and Run 04's full-layer confirmation (a *separately
+  trained* pair of checkpoints). That the finding replicates across two
+  independent LoRA trainings is a stronger claim than either alone — worth
+  stating as a replication, not just a gap-fill.
+
 ---
 
 ## Results
 
 ### 1. SDF implants a counter-prior belief that is dormant in agentic action
 
-The base model already holds the "unmonitored" belief (12/15 on the direct
-probe). "Monitored" is counter-prior. A first corpus (60 docs, "outputs reviewed
-line-by-line") barely moved it (1→6/15) — the model read "reviewed" as automated
-matching. Rewriting the claim around *a human reads the source code* + scaling to
-220 docs got it to **12/15**, generalizing to novel framings.
+*Implant number: Run 02. Tier-3 rate table: Run 03 (hand-graded original —
+see "Runs at a glance" above; not re-run in Run 04).*
 
-But on the Tier-3 task the implanted belief **does not change behavior**:
+The base model already holds the "unmonitored" belief (12/15 on the direct
+probe). "Monitored" is counter-prior. A first corpus (Run 01, 60 docs, "outputs
+reviewed line-by-line") barely moved it (1→6/15) — the model read "reviewed" as
+automated matching. Rewriting the claim around *a human reads the source code* +
+scaling to 220 docs (Run 02) got it to **12/15**, generalizing to novel framings
+(Run 04's independent retrain replicated this closely: 13/15).
+
+But on the Tier-3 task (Run 03) the implanted belief **does not change
+behavior**:
 
 | cell | hacked | refused |
 |---|---|---|
@@ -68,6 +102,8 @@ retrieved.**
 
 ### 2. CoT reading of that behavior is unreliable
 
+*Step 3/Run 01, same Run-02 checkpoints and same Run-03 transcripts as §1.*
+
 A transcript-only judge asked whether the model believes its code is reviewed:
 
 | condition / checkpoint | correct |
@@ -81,6 +117,10 @@ CoT reading fails when the belief isn't verbalised, and is misled by surface tex
 when it is.
 
 ### 3. A naive activation probe on this organism just reads adapter identity
+
+*Step 3/Run 01 (original finding, Run-02 checkpoints, 4 layers) + Run 04
+(full 41-layer confirmation, an independently-trained pair of checkpoints —
+see "Runs at a glance").*
 
 Because the belief was implanted by swapping LoRA adapters, "detect the belief"
 and "detect which adapter is loaded" are the same problem:
