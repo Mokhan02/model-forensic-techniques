@@ -85,10 +85,14 @@ when it is.
 Because the belief was implanted by swapping LoRA adapters, "detect the belief"
 and "detect which adapter is loaded" are the same problem:
 
-- A cross-checkpoint probe's best layer is **layer 1** (CV AUC 1.0) — too early
-  for a semantic belief.
-- The probe direction has **cosine 0.98–0.998** with an "adapter-ID" direction
-  built from 20 *belief-neutral* prompts (Fibonacci, a haiku, TCP vs UDP).
+- A cross-checkpoint probe scores **CV AUC 1.000 at every layer from 1 to 40**
+  (full 41-layer array in `docs/results/step1_run04_reproduction.md`) — not
+  just an early-layer artifact, but a global property of the network under
+  LoRA fine-tuning.
+- The probe direction has **cosine ≥0.94 for layers 1–19 and 0.997–0.998 for
+  layers 20–38** with an "adapter-ID" direction built from 20 *belief-neutral*
+  prompts (Fibonacci, a haiku, TCP vs UDP) — only dropping at the network's
+  edges (embeddings; the final 2 layers).
 - That adapter-ID direction *alone* separates the Tier-3 transcripts at AUC 1.0.
 - A probe trained on within-model context-induced belief (the one route that
   could escape the confound) did not transfer — AUC 0.000, sign-flipped.
