@@ -217,16 +217,43 @@ def check_local(name: str, hf_id: str, system_prompt: str | None = None,
               "anything about the result looks surprising.")
     try:
         model = AutoModelForCausalLM.from_pretrained(hf_id, **kwargs)
+    except ValueError as e:
+        if "Unrecognized configuration class" not in str(e):
+            print(f"  AutoModelForCausalLM failed ({type(e).__name__}: {e}) — "
+                  f"not the known unrecognized-config-class case; read the "
+                  f"traceback below before assuming a cause.")
+            raise
+        # The checkpoint's own config.json names the exact class it expects
+        # (its "architectures" field) — more reliable than guessing through
+        # transformers' Auto-class list. Resolve and retry with that instead.
+        import transformers
+        from transformers import AutoConfig
+        cfg = AutoConfig.from_pretrained(hf_id, trust_remote_code=True)
+        arch_names = getattr(cfg, "architectures", None) or []
+        if not arch_names:
+            print(f"  AutoModelForCausalLM failed and config.json has no "
+                  f"'architectures' field to fall back to — read the "
+                  f"traceback below.")
+            raise
+        arch = arch_names[0]
+        cls = getattr(transformers, arch, None)
+        if cls is None:
+            print(f"  config.json says architectures=[{arch!r}] but "
+                  f"transformers.{arch} doesn't exist in this install — "
+                  f"check the transformers version, or the class may need "
+                  f"importing from a model-specific submodule instead.")
+            raise
+        print(f"  AutoModelForCausalLM doesn't recognize this config; "
+              f"config.json names {arch!r} directly — retrying with that class.")
+        model = cls.from_pretrained(hf_id, **kwargs)
     except Exception as e:
         print(f"  AutoModelForCausalLM failed ({type(e).__name__}: {e}).")
         print(f"  Read the full traceback below before assuming a cause — this "
-              f"can be the multimodal-loading-class mismatch the model card "
-              f"describes (AutoProcessor + a model-specific class instead), "
-              f"OR something unrelated (e.g. a quantization/hardware "
-              f"incompatibility: Qwen3.8-27B-FP8 needs compute capability "
-              f">=8.9 for native FP8 and hit a bug in this transformers "
-              f"version's bf16-dequant fallback on an A100 — use the bf16 "
-              f"checkpoint directly there instead of guessing at the load path).")
+              f"can be a quantization/hardware incompatibility (e.g. "
+              f"Qwen3.8-27B-FP8 needs compute capability >=8.9 for native FP8 "
+              f"and hit a bug in this transformers version's bf16-dequant "
+              f"fallback on an A100 — use the bf16 checkpoint directly there) "
+              f"or something else entirely — don't assume without reading it.")
         raise
 
     msgs = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + \
