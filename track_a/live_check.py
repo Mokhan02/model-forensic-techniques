@@ -190,11 +190,29 @@ def check_local(name: str, hf_id: str, system_prompt: str | None = None,
     reasoning trace and look like a false (c) rather than a real one.
     """
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 
     print(f"  loading {hf_id} (plain transformers.generate — no serving stack), "
           f"device_map={device_map!r}")
-    tok = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
+    # AutoProcessor is the architecturally correct universal loader — it
+    # resolves the real model-specific chat template for VLM checkpoints
+    # (where the template can live on the processor rather than the bare
+    # tokenizer config) and degrades to a plain tokenizer wrapper for
+    # text-only models. Try it first; a bare AutoTokenizer chat template on a
+    # VLM checkpoint can silently build a malformed prompt (the model then
+    # just echoes the input back instead of answering it — no exception, so
+    # this fails silently unless you actually read the output).
+    templater = None
+    try:
+        templater = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
+        tok = getattr(templater, "tokenizer", templater)
+        print("  loaded via AutoProcessor")
+    except Exception as e:
+        print(f"  AutoProcessor failed ({type(e).__name__}: {e}), falling back "
+              f"to AutoTokenizer — if generation looks degenerate (echoing the "
+              f"prompt back), this fallback's chat template is the likely cause.")
+        tok = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
+    templater = templater or tok  # whichever object actually has the right chat template
     # device_map="auto" (accelerate's balancer) can offload layers to CPU even
     # when the model comfortably fits on a single GPU, if it estimates memory
     # conservatively or sees stale usage from another process — generation
@@ -259,11 +277,11 @@ def check_local(name: str, hf_id: str, system_prompt: str | None = None,
     msgs = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + \
            [{"role": "user", "content": PROMPT}]
     try:
-        text = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
-                                       enable_thinking=True)
+        text = templater.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
+                                             enable_thinking=True)
     except TypeError:
-        # tokenizer's chat template may not accept enable_thinking — fall back
-        text = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+        # chat template may not accept enable_thinking — fall back
+        text = templater.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
     ins = tok(text, return_tensors="pt").to(model.device)
     with torch.no_grad():
         out = model.generate(**ins, max_new_tokens=2048, do_sample=False,
