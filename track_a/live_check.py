@@ -67,13 +67,19 @@ def check_anthropic(model_id: str):
 
     client = anthropic.Anthropic()
     results = {}
-    for label, thinking in [
-        ("default_thinking_enabled", {"type": "enabled", "budget_tokens": 4096}),
+    # Claude Sonnet 5 uses the newer adaptive-thinking API shape (the older
+    # thinking.type=enabled/budget_tokens form 400s on this model — verified
+    # live 2026-09-09, see roster_check.md). thinking={"type":"adaptive"} +
+    # output_config={"effort": ...} replaces it; effort in
+    # low/medium/high/xhigh/max, default "high".
+    for label, thinking, output_config in [
+        ("adaptive_effort_high", {"type": "adaptive"}, {"effort": "high"}),
     ]:
         resp = client.messages.create(
             model=model_id,
             max_tokens=8192,
             thinking=thinking,
+            output_config=output_config,
             messages=[{"role": "user", "content": PROMPT}],
         )
         results[label] = resp.model_dump()
