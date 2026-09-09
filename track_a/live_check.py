@@ -165,7 +165,7 @@ def check_gemini(model_id: str):
 # --- Local (open-weight) ----------------------------------------------------
 
 def check_local(name: str, hf_id: str, system_prompt: str | None = None,
-                device_map: str = "auto"):
+                device_map: str = "auto", load_in_8bit: bool = False):
     """Both current open-weight candidates (Qwen3.8-27B, Muse-Glimmer-30B) are
     natively multimodal per their model cards (vision/perception encoder
     components), not plain text-only causal LMs. AutoModelForCausalLM is
@@ -193,10 +193,21 @@ def check_local(name: str, hf_id: str, system_prompt: str | None = None,
     # pass) and can look "stuck" rather than just slow. device_map={"":0}
     # forces everything onto one GPU with no offload possible.
     dm = {"": 0} if device_map == "single_gpu" else device_map
+    kwargs = dict(torch_dtype=torch.bfloat16, device_map=dm, trust_remote_code=True)
+    if load_in_8bit:
+        # Fidelity tradeoff, not a free lunch: for a <=40GB GPU that can't fit
+        # the full bf16 model. If anything about the reasoning-trace
+        # classification looks surprising/borderline, re-verify on an 80GB
+        # card before trusting it — quantized weights could in principle
+        # change generation behavior, not just precision.
+        from transformers import BitsAndBytesConfig
+        kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+        kwargs.pop("torch_dtype", None)
+        print("  WARNING: loading in 8-bit (GPU too small for full bf16). "
+              "This is a fidelity tradeoff — re-verify on an 80GB card if "
+              "anything about the result looks surprising.")
     try:
-        model = AutoModelForCausalLM.from_pretrained(
-            hf_id, torch_dtype=torch.bfloat16, device_map=dm, trust_remote_code=True,
-        )
+        model = AutoModelForCausalLM.from_pretrained(hf_id, **kwargs)
     except Exception as e:
         print(f"  AutoModelForCausalLM failed ({type(e).__name__}: {e}).")
         print(f"  Read the full traceback below before assuming a cause — this "
@@ -260,7 +271,7 @@ CHECKS = {
     "gemini": lambda a: check_gemini(a.model_id or "gemini-3.1-pro"),
     "qwen": lambda a: check_local(
         "qwen_3_8", a.hf_id or a.model_id or "Qwen/Qwen3.8-27B-FP8",
-        a.system_prompt, a.device_map),
+        a.system_prompt, a.device_map, a.load_in_8bit),
     # DeepSeek-V4 swapped for Muse Glimmer 30B (see roster_check.md). Its card
     # describes reasoning depth as a system-prompt control, not a generation
     # kwarg — default here to a sensible non-empty value so a bare `--model
@@ -268,7 +279,7 @@ CHECKS = {
     # --system-prompt if you want a different effort level.
     "muse": lambda a: check_local(
         "muse_glimmer_30b", a.hf_id or a.model_id or "meta-models/Muse-Glimmer-30B",
-        a.system_prompt or "Reasoning strength: high", a.device_map),
+        a.system_prompt or "Reasoning strength: high", a.device_map, a.load_in_8bit),
 }
 
 
@@ -280,9 +291,14 @@ def main():
     ap.add_argument("--system-prompt", default=None,
                     help="local models only — e.g. Muse Glimmer's reasoning-strength control")
     ap.add_argument("--device-map", default="auto",
-                    help="local models only — 'auto' (accelerate's balancer, can offload to "
-                         "CPU and look stuck) or 'single_gpu' (force everything onto GPU 0, "
-                         "no offload possible)")
+                    help="local models only — 'auto' (accelerate's balancer, offloads to CPU "
+                         "if the model doesn't fit — slow, not stuck) or 'single_gpu' (force "
+                         "everything onto GPU 0 — will OOM instead of offloading if it doesn't "
+                         "fit, only use once you've confirmed the model fits your GPU's memory)")
+    ap.add_argument("--load-in-8bit", action="store_true",
+                    help="local models only — quantize to fit a smaller GPU (e.g. 40GB card "
+                         "that can't hold a ~54GB bf16 model). Fidelity tradeoff, not free — "
+                         "re-verify on a big-enough card for full precision if results surprise you")
     ap.add_argument("--list-models", choices=["openai", "gemini"], default=None,
                     help="list available model ids for a provider instead of running a check "
                          "(use this when a guessed --model-id 404s)")
