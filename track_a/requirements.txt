@@ -1,0 +1,6 @@
+# Track A additions on top of the main repo's venv (transformers/torch/etc.
+# already installed via scripts/lambda_setup.sh). Install into the SAME venv:
+#   source .venv/bin/activate && pip install -r track_a/requirements.txt
+anthropic>=0.40
+openai>=1.50
+google-genai>=0.3
