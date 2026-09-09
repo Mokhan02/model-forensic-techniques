@@ -41,6 +41,15 @@ provider's current docs/console and pass --model-id to override if wrong.
 
 from __future__ import annotations
 
+import warnings
+
+# bitsandbytes' MatMul8bitLt logs this once per 8-bit matmul call — many per
+# forward pass, many forward passes per generated token, so a long --load-in-8bit
+# generation floods the terminal with thousands of copies. Benign (it's just
+# describing bnb's internal fp16 cast for the 8-bit kernel), not a hang signal —
+# suppressed here so it doesn't look like something's wrong.
+warnings.filterwarnings("ignore", message=".*inputs will be cast.*")
+
 import argparse
 import json
 import sys
