@@ -11,3 +11,5 @@ anthropic>=0.40
 openai>=1.50
 google-genai>=0.3
 bitsandbytes>=0.43   # only needed for --load-in-8bit on GPUs too small for full bf16
+torchvision          # AutoProcessor needs this for Muse Glimmer's image processor,
+                     # even for text-only use (see roster_check.md)

@@ -63,6 +63,26 @@ transcript.
   population." That broader claim isn't available from any roster buildable
   under current API restrictions, and the write-up should say so rather than
   let Tier 1's breadth lend false generality to Tier 2's narrower result.
+- **Decoding config, not just prompting, matters for the two open-weight
+  models — confirmed during the roster check, not a hypothetical.** Greedy
+  decoding on Muse Glimmer 30B (8-bit) produced a genuine repetition loop
+  (verbatim-echoed the prompt instead of reasoning) — fixed with sampling +
+  `repetition_penalty=1.3`. A degenerate completion like that would silently
+  read as a `declined`/`unclear` judge bucket rather than what it actually is
+  (a decoding artifact), contaminating both tiers' numbers for that model.
+  The runner should use sampling with a repetition-penalty safety net for
+  both open-weight models, not strict greedy decoding — verify this doesn't
+  reintroduce its own problems (e.g. sampling variance across the n=20-40
+  reps) before locking in generation kwargs. Full detail:
+  `../roster_check.md`'s Muse Glimmer row.
+- **Reasoning format differs across the two open-weight models — the leak
+  keyword-scan needs to know this.** Qwen uses `<think>...</think>`; Muse
+  Glimmer uses a Harmony-style channel-routing format (`to=self<|message|>`
+  for its internal-reasoning turn, vs `to=user` for the final one) — no
+  `<think>` tag at all. A leak-detection pass that only looks for `<think>`
+  content would silently find nothing on Muse Glimmer regardless of what it
+  actually reasoned. Parse each model's reasoning span according to its own
+  format, don't assume parity.
 
 ## Why not just drop Tier 2 given the small n
 
