@@ -67,7 +67,7 @@ implying the narrower tier has the broader tier's generality.
 
 ## Revised roster — 5 models, split by what each tier needs
 
-One model larger than the original 4-model pilot plan (added DeepSeek-V4)
+One model larger than the original 4-model pilot plan (added a second open-weight model)
 specifically so Tier 2 has two independent open-weight architectures to
 compare, rather than resting on a single model the way the original
 write-up already flagged as a limitation ("one implant seed, one model") —
@@ -80,7 +80,7 @@ context.
 | GPT-5.6 Sol | OpenAI API | Tier 1 (hack-rate) only |
 | Gemini 3.1 Pro | Google API | Tier 1 (hack-rate) only |
 | Qwen 3.8 | Local / Lambda | Tier 1 **and** Tier 2 (CoT-leak) |
-| DeepSeek-V4 | Local / Lambda | Tier 1 **and** Tier 2 (CoT-leak) |
+| Muse Glimmer 30B | Local / Lambda | Tier 1 **and** Tier 2 (CoT-leak) |
 
 None of these are "confirmed" in the sense of `roster_check.md` until their
 row has an actual generation behind it, not just a documentation citation.

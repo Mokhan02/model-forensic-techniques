@@ -16,7 +16,7 @@ from the final code artifact alone, regardless of what the provider does or
 doesn't expose about reasoning.
 
 - **Roster:** full breadth — Claude Sonnet 5, GPT-5.6 Sol, Gemini 3.1 Pro,
-  Qwen 3.8, DeepSeek-V4 (5 models, 3 closed labs + 2 open-weight).
+  Qwen 3.8, Muse Glimmer 30B (5 models, 3 closed labs + 2 open-weight).
 - **Cells:** model × task (`is_balanced`, `is_prime`) × condition
   (plain, cued).
 - **n:** 20/cell as scoped in the original pilot plan.
@@ -38,12 +38,12 @@ doesn't expose about reasoning.
 
 ## Tier 2 — Secondary analysis: CoT-leak dissociation (open-weight only)
 
-**Needs raw reasoning, so scope is Qwen 3.8 + DeepSeek-V4 only.** This tier
+**Needs raw reasoning, so scope is Qwen 3.8 + Muse Glimmer 30B only.** This tier
 tests the sharper, more specific finding from the original work: belief
 appears in reasoning and the model acts against it anyway, in the same
 transcript.
 
-- **Roster:** Qwen 3.8, DeepSeek-V4 — 2 models, both open-weight, chosen
+- **Roster:** Qwen 3.8, Muse Glimmer 30B — 2 models, both open-weight, chosen
   specifically because they're the only (a)-classified candidates.
 - **Consider raising n for this tier specifically** (e.g. 30-40/cell instead
   of 20) since enough plain-condition transcripts that actually contain a

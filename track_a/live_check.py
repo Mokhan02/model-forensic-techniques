@@ -26,9 +26,14 @@ Usage:
     python track_a/live_check.py --model anthropic
     python track_a/live_check.py --model openai
     python track_a/live_check.py --model gemini
-    python track_a/live_check.py --model qwen   --hf-id <exact-hf-repo-id>
-    python track_a/live_check.py --model deepseek --hf-id <exact-hf-repo-id>
+    python track_a/live_check.py --model qwen
+    python track_a/live_check.py --model muse --system-prompt "Reasoning strength: high"
     python track_a/live_check.py --model all    # everything with defaults
+
+qwen/muse default to their confirmed HF repo ids (see roster_check.md);
+--hf-id overrides either. muse's reasoning depth is a SYSTEM-PROMPT control
+per its model card, not a generation kwarg — defaults to "Reasoning
+strength: high" if --system-prompt isn't given.
 
 The exact model-id strings below are best-effort — verify against each
 provider's current docs/console and pass --model-id to override if wrong.
@@ -159,16 +164,41 @@ def check_gemini(model_id: str):
 
 # --- Local (open-weight) ----------------------------------------------------
 
-def check_local(name: str, hf_id: str):
+def check_local(name: str, hf_id: str, system_prompt: str | None = None):
+    """Both current open-weight candidates (Qwen3.8-27B, Muse-Glimmer-30B) are
+    natively multimodal per their model cards (vision/perception encoder
+    components), not plain text-only causal LMs. AutoModelForCausalLM is
+    tried first since it's often still valid for text-only use of a VLM
+    checkpoint — but if the card's own loading snippet says otherwise
+    (AutoModelForMultimodalLM / a model-specific class + AutoProcessor
+    instead of AutoTokenizer), trust that over this fallback and adapt.
+
+    Muse-Glimmer-30B's card describes reasoning depth as a SYSTEM-PROMPT
+    control ("Reasoning strength: low/medium/high/xhigh"), not a generation
+    kwarg — pass --system-prompt "Reasoning strength: high" or similar when
+    testing it, or a default-effort call may come back with little/no
+    reasoning trace and look like a false (c) rather than a real one.
+    """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     print(f"  loading {hf_id} (plain transformers.generate — no serving stack)")
     tok = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        hf_id, torch_dtype=torch.bfloat16, device_map="auto", trust_remote_code=True,
-    )
-    msgs = [{"role": "user", "content": PROMPT}]
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            hf_id, torch_dtype=torch.bfloat16, device_map="auto", trust_remote_code=True,
+        )
+    except Exception as e:
+        print(f"  AutoModelForCausalLM failed ({type(e).__name__}: {e}).")
+        print(f"  This model's card describes a multimodal loading class "
+              f"(AutoProcessor + a model-specific class, not AutoTokenizer/"
+              f"AutoModelForCausalLM) — check {hf_id}'s actual model card code "
+              f"snippet on huggingface.co and adapt this function to match it "
+              f"rather than guessing further here.")
+        raise
+
+    msgs = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + \
+           [{"role": "user", "content": PROMPT}]
     try:
         text = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
                                        enable_thinking=True)
@@ -216,8 +246,16 @@ CHECKS = {
     "anthropic": lambda a: check_anthropic(a.model_id or "claude-sonnet-5"),
     "openai": lambda a: check_openai(a.model_id or "gpt-5.6-sol"),
     "gemini": lambda a: check_gemini(a.model_id or "gemini-3.1-pro"),
-    "qwen": lambda a: check_local("qwen_3_8", a.hf_id or a.model_id or "REPLACE_WITH_EXACT_HF_ID"),
-    "deepseek": lambda a: check_local("deepseek_v4", a.hf_id or a.model_id or "REPLACE_WITH_EXACT_HF_ID"),
+    "qwen": lambda a: check_local(
+        "qwen_3_8", a.hf_id or a.model_id or "Qwen/Qwen3.8-27B-FP8", a.system_prompt),
+    # DeepSeek-V4 swapped for Muse Glimmer 30B (see roster_check.md). Its card
+    # describes reasoning depth as a system-prompt control, not a generation
+    # kwarg — default here to a sensible non-empty value so a bare `--model
+    # muse` run doesn't silently under-elicit reasoning; override with
+    # --system-prompt if you want a different effort level.
+    "muse": lambda a: check_local(
+        "muse_glimmer_30b", a.hf_id or a.model_id or "meta-models/Muse-Glimmer-30B",
+        a.system_prompt or "Reasoning strength: high"),
 }
 
 
@@ -226,6 +264,8 @@ def main():
     ap.add_argument("--model", choices=list(CHECKS) + ["all"], required=False)
     ap.add_argument("--model-id", default=None, help="override the API model id")
     ap.add_argument("--hf-id", default=None, help="override the HF repo id (local models)")
+    ap.add_argument("--system-prompt", default=None,
+                    help="local models only — e.g. Muse Glimmer's reasoning-strength control")
     ap.add_argument("--list-models", choices=["openai", "gemini"], default=None,
                     help="list available model ids for a provider instead of running a check "
                          "(use this when a guessed --model-id 404s)")
