@@ -164,7 +164,8 @@ def check_gemini(model_id: str):
 
 # --- Local (open-weight) ----------------------------------------------------
 
-def check_local(name: str, hf_id: str, system_prompt: str | None = None):
+def check_local(name: str, hf_id: str, system_prompt: str | None = None,
+                device_map: str = "auto"):
     """Both current open-weight candidates (Qwen3.8-27B, Muse-Glimmer-30B) are
     natively multimodal per their model cards (vision/perception encoder
     components), not plain text-only causal LMs. AutoModelForCausalLM is
@@ -182,11 +183,19 @@ def check_local(name: str, hf_id: str, system_prompt: str | None = None):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    print(f"  loading {hf_id} (plain transformers.generate — no serving stack)")
+    print(f"  loading {hf_id} (plain transformers.generate — no serving stack), "
+          f"device_map={device_map!r}")
     tok = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
+    # device_map="auto" (accelerate's balancer) can offload layers to CPU even
+    # when the model comfortably fits on a single GPU, if it estimates memory
+    # conservatively or sees stale usage from another process — generation
+    # then becomes extremely slow (CPU<->GPU weight shuffling per forward
+    # pass) and can look "stuck" rather than just slow. device_map={"":0}
+    # forces everything onto one GPU with no offload possible.
+    dm = {"": 0} if device_map == "single_gpu" else device_map
     try:
         model = AutoModelForCausalLM.from_pretrained(
-            hf_id, torch_dtype=torch.bfloat16, device_map="auto", trust_remote_code=True,
+            hf_id, torch_dtype=torch.bfloat16, device_map=dm, trust_remote_code=True,
         )
     except Exception as e:
         print(f"  AutoModelForCausalLM failed ({type(e).__name__}: {e}).")
@@ -250,7 +259,8 @@ CHECKS = {
     "openai": lambda a: check_openai(a.model_id or "gpt-5.6-sol"),
     "gemini": lambda a: check_gemini(a.model_id or "gemini-3.1-pro"),
     "qwen": lambda a: check_local(
-        "qwen_3_8", a.hf_id or a.model_id or "Qwen/Qwen3.8-27B-FP8", a.system_prompt),
+        "qwen_3_8", a.hf_id or a.model_id or "Qwen/Qwen3.8-27B-FP8",
+        a.system_prompt, a.device_map),
     # DeepSeek-V4 swapped for Muse Glimmer 30B (see roster_check.md). Its card
     # describes reasoning depth as a system-prompt control, not a generation
     # kwarg — default here to a sensible non-empty value so a bare `--model
@@ -258,7 +268,7 @@ CHECKS = {
     # --system-prompt if you want a different effort level.
     "muse": lambda a: check_local(
         "muse_glimmer_30b", a.hf_id or a.model_id or "meta-models/Muse-Glimmer-30B",
-        a.system_prompt or "Reasoning strength: high"),
+        a.system_prompt or "Reasoning strength: high", a.device_map),
 }
 
 
@@ -269,6 +279,10 @@ def main():
     ap.add_argument("--hf-id", default=None, help="override the HF repo id (local models)")
     ap.add_argument("--system-prompt", default=None,
                     help="local models only — e.g. Muse Glimmer's reasoning-strength control")
+    ap.add_argument("--device-map", default="auto",
+                    help="local models only — 'auto' (accelerate's balancer, can offload to "
+                         "CPU and look stuck) or 'single_gpu' (force everything onto GPU 0, "
+                         "no offload possible)")
     ap.add_argument("--list-models", choices=["openai", "gemini"], default=None,
                     help="list available model ids for a provider instead of running a check "
                          "(use this when a guessed --model-id 404s)")
