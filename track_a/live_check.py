@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import traceback
 from pathlib import Path
 
 OUT_DIR = Path(__file__).parent / "live_check_raw"
@@ -237,6 +238,15 @@ def main():
             CHECKS[name](a)
         except Exception as e:
             print(f"  FAILED: {type(e).__name__}: {e}", file=sys.stderr)
+            # SDKs often wrap the real cause (a TypeError from a bad kwarg, a
+            # genuine TLS/socket error, etc.) behind a generic wrapper
+            # exception like APIConnectionError — print the full chain, not
+            # just the top-level message, or you're debugging blind.
+            cause = e.__cause__ or e.__context__
+            if cause is not None:
+                print(f"  underlying cause: {type(cause).__name__}: {cause}", file=sys.stderr)
+            print("  --- full traceback ---", file=sys.stderr)
+            traceback.print_exc()
             print(f"  (this itself is a finding — record it in roster_check.md "
                   f"rather than silently skipping)")
 

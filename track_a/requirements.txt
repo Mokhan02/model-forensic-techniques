@@ -2,11 +2,11 @@
 # already installed via scripts/lambda_setup.sh). Install into the SAME venv:
 #   source .venv/bin/activate && pip install -r track_a/requirements.txt
 anthropic>=0.40
-# httpx 0.28.0 removed the `proxies=` kwarg from Client/AsyncClient.__init__;
-# anthropic-sdk-python still passes it internally as of at least 1.4.0, which
-# crashes client construction and surfaces as a generic APIConnectionError
-# instead of the real TypeError. Pin below 0.28 until upstream fixes it —
-# see https://github.com/anthropics/anthropic-sdk-python/issues/766
-httpx<0.28
+# NOTE: a known httpx<0.28 vs anthropic-sdk-python `proxies=` incompatibility
+# exists (github.com/anthropics/anthropic-sdk-python/issues/766) but pinning
+# httpx<0.28 did NOT fix the APIConnectionError seen on this box's anthropic
+# version, and DOES conflict with google-genai (requires httpx>=0.28.1) — so
+# it's not (solely) this bug here. Do not re-pin until live_check.py's full
+# traceback identifies the actual cause.
 openai>=1.50
 google-genai>=0.3
