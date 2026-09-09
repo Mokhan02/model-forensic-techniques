@@ -2,5 +2,11 @@
 # already installed via scripts/lambda_setup.sh). Install into the SAME venv:
 #   source .venv/bin/activate && pip install -r track_a/requirements.txt
 anthropic>=0.40
+# httpx 0.28.0 removed the `proxies=` kwarg from Client/AsyncClient.__init__;
+# anthropic-sdk-python still passes it internally as of at least 1.4.0, which
+# crashes client construction and surfaces as a generic APIConnectionError
+# instead of the real TypeError. Pin below 0.28 until upstream fixes it —
+# see https://github.com/anthropics/anthropic-sdk-python/issues/766
+httpx<0.28
 openai>=1.50
 google-genai>=0.3
