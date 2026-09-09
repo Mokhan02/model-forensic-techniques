@@ -189,6 +189,22 @@ def check_local(name: str, hf_id: str):
           "you asked for special tokens)?")
 
 
+def list_openai_models():
+    from openai import OpenAI
+    client = OpenAI()
+    for m in client.models.list():
+        print(m.id)
+
+
+def list_gemini_models():
+    from google import genai
+    client = genai.Client()
+    for m in client.models.list():
+        methods = getattr(m, "supported_actions", None) or getattr(
+            m, "supported_generation_methods", None)
+        print(m.name, methods)
+
+
 CHECKS = {
     "anthropic": lambda a: check_anthropic(a.model_id or "claude-sonnet-5"),
     "openai": lambda a: check_openai(a.model_id or "gpt-5.6-sol"),
@@ -200,10 +216,19 @@ CHECKS = {
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", choices=list(CHECKS) + ["all"], required=True)
+    ap.add_argument("--model", choices=list(CHECKS) + ["all"], required=False)
     ap.add_argument("--model-id", default=None, help="override the API model id")
     ap.add_argument("--hf-id", default=None, help="override the HF repo id (local models)")
+    ap.add_argument("--list-models", choices=["openai", "gemini"], default=None,
+                    help="list available model ids for a provider instead of running a check "
+                         "(use this when a guessed --model-id 404s)")
     a = ap.parse_args()
+
+    if a.list_models:
+        {"openai": list_openai_models, "gemini": list_gemini_models}[a.list_models]()
+        return
+    if not a.model:
+        ap.error("--model is required unless --list-models is given")
 
     targets = list(CHECKS) if a.model == "all" else [a.model]
     for name in targets:
