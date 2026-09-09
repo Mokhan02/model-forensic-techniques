@@ -190,11 +190,14 @@ def check_local(name: str, hf_id: str, system_prompt: str | None = None):
         )
     except Exception as e:
         print(f"  AutoModelForCausalLM failed ({type(e).__name__}: {e}).")
-        print(f"  This model's card describes a multimodal loading class "
-              f"(AutoProcessor + a model-specific class, not AutoTokenizer/"
-              f"AutoModelForCausalLM) — check {hf_id}'s actual model card code "
-              f"snippet on huggingface.co and adapt this function to match it "
-              f"rather than guessing further here.")
+        print(f"  Read the full traceback below before assuming a cause — this "
+              f"can be the multimodal-loading-class mismatch the model card "
+              f"describes (AutoProcessor + a model-specific class instead), "
+              f"OR something unrelated (e.g. a quantization/hardware "
+              f"incompatibility: Qwen3.8-27B-FP8 needs compute capability "
+              f">=8.9 for native FP8 and hit a bug in this transformers "
+              f"version's bf16-dequant fallback on an A100 — use the bf16 "
+              f"checkpoint directly there instead of guessing at the load path).")
         raise
 
     msgs = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + \
