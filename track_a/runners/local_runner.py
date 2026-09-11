@@ -30,10 +30,17 @@ import json
 import os
 import re
 import time
+import warnings
 from pathlib import Path
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+# bitsandbytes' MatMul8bitLt logs this once per 8-bit matmul call — many per
+# forward pass, many forward passes per generated token, so a max_new_tokens=
+# 4096 8-bit generation floods the terminal with thousands of copies. Benign
+# (bnb's internal fp16 cast for the 8-bit kernel), not a hang signal.
+warnings.filterwarnings("ignore", message=".*inputs will be cast.*")
 
 RAW_DIR = Path("outputs/track_a/raw_responses")
 
