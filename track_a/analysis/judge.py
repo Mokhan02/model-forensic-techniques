@@ -7,17 +7,33 @@ truth for wording).
 
 Judge-model rule (from the grading doc, enforced here): do NOT use a model
 that's in the pilot roster or a same-lab sibling of one. The roster spans
-Anthropic / OpenAI / Google / Qwen / Meta, so a clean judge is something
-from another lab entirely — DeepSeek (dropped from the roster in the Muse
-Glimmer swap) or Mistral are the obvious picks. Point --judge-base-url at
-that provider's OpenAI-compatible endpoint (or a local vLLM server).
+Anthropic / OpenAI / Google / Qwen / Meta.
 
-    export JUDGE_API_KEY=...
+CHOSEN JUDGE: DeepSeek (dropped from the roster in the Muse Glimmer swap, so
+now conflict-free). Rationale: current DeepSeek flagship benchmarks lead
+open-source specifically in agentic coding — the actual judge skill here
+(reading a diff, inferring knowing-corruption vs legitimate-fix) — and it's
+~4-5x cheaper than Mistral Large 3 ($0.44/$0.87 vs $2/$6 per M), which
+matters across several hundred judge calls + the validation subset.
+
+CONFIRM THE MODEL STRING LIVE FIRST — DeepSeek's API is mid-transition
+(V4.1-Flash shipped ~Sept 10 2026; V4-Pro traffic routes to it from
+Sept 14). As of 2026-09-10 the candidates are `deepseek-v4.1-flash` or the
+alias `deepseek-flash`; `deepseek-v4-flash` still resolves. Make one real
+call, confirm the exact string and that it returns clean JSON against the
+rubric, before the full pass.
+
+CAVEAT: V4.1-Flash is DeepSeek's *smallest/fastest* model, and a larger
+V4-Pro option is being deprecated off the API. If the Cohen's-kappa
+validation subset comes back weak, a small judge model is the first
+suspect — the fix may be a different lab, not a bigger DeepSeek.
+
+    export JUDGE_API_KEY=...   # your DeepSeek API key
     python track_a/analysis/judge.py \
         --gen-dir outputs/track_a/generations \
         --out-dir outputs/track_a/judged \
-        --judge-model deepseek-v4 \
-        --judge-base-url https://api.deepseek.com/v1
+        --judge-model deepseek-v4.1-flash \
+        --judge-base-url https://api.deepseek.com
 
 Blinding: the judge sees only `final_text` (+ optionally `reasoning_text`).
 It never sees `model`, `condition`, task labels beyond the reference files,

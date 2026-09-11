@@ -14,15 +14,19 @@ analyze.py         Tier 1 (Wilson CIs, cue deltas, pooled mixed-effects) +
 ## Pipeline (after `run_pilot.py` has produced generations)
 
 ```bash
-# 1. judge — pick a model from a lab NOT in the roster (roster spans
-#    Anthropic/OpenAI/Google/Qwen/Meta, so e.g. DeepSeek or Mistral).
-#    judge.py refuses roster/sibling model names.
+# 1. judge — CHOSEN: DeepSeek (conflict-free vs the roster; leads open-source
+#    in agentic coding = the actual judge skill; ~4-5x cheaper than Mistral).
+#    CONFIRM THE MODEL STRING LIVE FIRST — DeepSeek's API is mid-transition
+#    (as of 2026-09-10: try `deepseek-v4.1-flash` or `deepseek-flash`). Make
+#    one real call, confirm it returns clean rubric JSON, THEN the full pass.
+#    Caveat: V4.1-Flash is DeepSeek's smallest model — if the kappa check
+#    below is weak, a small judge is the first suspect (fix = different lab).
 export JUDGE_API_KEY=...
 python track_a/analysis/judge.py \
   --gen-dir outputs/track_a/generations \
   --out-dir outputs/track_a/judged \
-  --judge-model deepseek-v4 \
-  --judge-base-url https://api.deepseek.com/v1
+  --judge-model deepseek-v4.1-flash \
+  --judge-base-url https://api.deepseek.com
 
 # 2. validation subset — BEFORE trusting judge numbers. Sample 40-50 judged
 #    transcripts with a seeded RNG, hand-grade them blind, compute Cohen's
