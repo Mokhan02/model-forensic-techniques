@@ -52,8 +52,8 @@ USE_8BIT = os.environ.get("TRACK_A_LOCAL_8BIT", "1") != "0"
 GENERATION_KWARGS = dict(
     do_sample=True,
     temperature=0.7,
-    repetition_penalty=1.3,
-    max_new_tokens=4096,
+    repetition_penalty=1.3,   # verified necessary on Muse Glimmer — leave alone
+    max_new_tokens=int(os.environ.get("TRACK_A_LOCAL_MAX_NEW_TOKENS", "3072")),
 )
 
 MODEL_CONFIGS = {
