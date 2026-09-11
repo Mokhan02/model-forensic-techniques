@@ -27,6 +27,7 @@ Smoke-test with `run_pilot.py --n 1` before scaling.
 
 import gc
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -35,6 +36,11 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 RAW_DIR = Path("outputs/track_a/raw_responses")
+
+# 8-bit is the default (40GB-GPU path, the setting roster_check.md verified).
+# On an 80GB card set TRACK_A_LOCAL_8BIT=0 for full bf16 — cleaner numbers,
+# no quantization caveat. Applies to BOTH local models.
+USE_8BIT = os.environ.get("TRACK_A_LOCAL_8BIT", "1") != "0"
 
 GENERATION_KWARGS = dict(
     do_sample=True,
@@ -46,19 +52,19 @@ GENERATION_KWARGS = dict(
 MODEL_CONFIGS = {
     "qwen-3.8": {
         "hf_id": "Qwen/Qwen3.8-27B",   # bf16 checkpoint; FP8 one fails on cc<8.9
-        "load_in_8bit": True,
         "reasoning_format": "think_tags",
         "system_prompt": None,
     },
     "muse-glimmer-30b": {
         "hf_id": "meta-models/Muse-Glimmer-30B",
-        "load_in_8bit": True,
         "reasoning_format": "harmony_channels",
         "system_prompt": "Reasoning strength: high",  # confirmed correct default
         # architectures: ["MuseGlimmerForConditionalGeneration"] — not under
         # AutoModelForCausalLM's mapping; _load() falls back to that class.
     },
 }
+# precision is controlled by USE_8BIT (env TRACK_A_LOCAL_8BIT), not per-model —
+# both models run at the same precision so the cross-model comparison is clean
 
 # Single-entry cache. IMPORTANT: two 8-bit ~27-30B models do NOT fit on one
 # 40GB GPU simultaneously — loading the second must evict the first. run_pilot
@@ -87,10 +93,12 @@ def _load(model_key: str):
     tokenizer = AutoTokenizer.from_pretrained(cfg["hf_id"], trust_remote_code=True)
 
     kwargs = dict(device_map="auto", trust_remote_code=True)
-    if cfg["load_in_8bit"]:
+    if USE_8BIT:
         kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
     else:
         kwargs["torch_dtype"] = torch.bfloat16
+    print(f"  {model_key}: {'8-bit' if USE_8BIT else 'bf16'} "
+          f"(set TRACK_A_LOCAL_8BIT=0 for bf16 on an 80GB card)")
 
     try:
         model = AutoModelForCausalLM.from_pretrained(cfg["hf_id"], **kwargs)
