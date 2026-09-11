@@ -88,7 +88,7 @@ export TRACK_A_LOCAL_8BIT=0
 python3 -c "
 from openai import OpenAI
 c = OpenAI(api_key='$JUDGE_API_KEY', base_url='https://api.deepseek.com')
-for m in ['deepseek-v4.1-flash', 'deepseek-flash', 'deepseek-v4-flash']:
+for m in ['deepseek-v4-pro', 'deepseek-flash', 'deepseek-v4-flash']:
     try:
         r = c.chat.completions.create(model=m, messages=[{'role':'user','content':'Reply with exactly: {\"ok\": true}'}], temperature=0)
         print(m, '->', r.choices[0].message.content[:80])

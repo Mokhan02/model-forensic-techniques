@@ -16,16 +16,15 @@ analyze.py         Tier 1 (Wilson CIs, cue deltas, pooled mixed-effects) +
 ```bash
 # 1. judge — CHOSEN: DeepSeek (conflict-free vs the roster; leads open-source
 #    in agentic coding = the actual judge skill; ~4-5x cheaper than Mistral).
-#    CONFIRM THE MODEL STRING LIVE FIRST — DeepSeek's API is mid-transition
-#    (as of 2026-09-10: try `deepseek-v4.1-flash` or `deepseek-flash`). Make
-#    one real call, confirm it returns clean rubric JSON, THEN the full pass.
-#    Caveat: V4.1-Flash is DeepSeek's smallest model — if the kappa check
-#    below is weak, a small judge is the first suspect (fix = different lab).
+#    Supported model strings (confirmed live 2026-09-10): `deepseek-v4-pro`
+#    (larger, until ~Sept 14 then routes to Flash) or `deepseek-flash`.
+#    Caveat: Flash is DeepSeek's smallest model — if the kappa check below
+#    is weak, a small judge is the first suspect (fix = different lab).
 export JUDGE_API_KEY=...
 python track_a/analysis/judge.py \
   --gen-dir outputs/track_a/generations \
   --out-dir outputs/track_a/judged \
-  --judge-model deepseek-v4.1-flash \
+  --judge-model deepseek-v4-pro \
   --judge-base-url https://api.deepseek.com
 
 # 2. validation subset — BEFORE trusting judge numbers. Sample 40-50 judged

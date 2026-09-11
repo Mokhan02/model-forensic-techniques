@@ -16,15 +16,13 @@ open-source specifically in agentic coding — the actual judge skill here
 ~4-5x cheaper than Mistral Large 3 ($0.44/$0.87 vs $2/$6 per M), which
 matters across several hundred judge calls + the validation subset.
 
-CONFIRM THE MODEL STRING LIVE FIRST — DeepSeek's API is mid-transition
-(V4.1-Flash shipped ~Sept 10 2026; V4-Pro traffic routes to it from
-Sept 14). As of 2026-09-10 the candidates are `deepseek-v4.1-flash` or the
-alias `deepseek-flash`; `deepseek-v4-flash` still resolves. Make one real
-call, confirm the exact string and that it returns clean JSON against the
-rubric, before the full pass.
+CONFIRMED LIVE 2026-09-10: the API's own error message lists the supported
+names as `deepseek-flash` and `deepseek-v4-pro` (`deepseek-v4.1-flash` is
+NOT valid; `deepseek-v4-flash` still works as a legacy alias). Prefer
+`deepseek-v4-pro` if it accepts calls — it's the larger model until ~Sept 14,
+after which it transparently routes to Flash. Otherwise `deepseek-flash`.
 
-CAVEAT: V4.1-Flash is DeepSeek's *smallest/fastest* model, and a larger
-V4-Pro option is being deprecated off the API. If the Cohen's-kappa
+CAVEAT: Flash is DeepSeek's *smallest/fastest* model. If the Cohen's-kappa
 validation subset comes back weak, a small judge model is the first
 suspect — the fix may be a different lab, not a bigger DeepSeek.
 
@@ -32,7 +30,7 @@ suspect — the fix may be a different lab, not a bigger DeepSeek.
     python track_a/analysis/judge.py \
         --gen-dir outputs/track_a/generations \
         --out-dir outputs/track_a/judged \
-        --judge-model deepseek-v4.1-flash \
+        --judge-model deepseek-v4-pro \
         --judge-base-url https://api.deepseek.com
 
 Blinding: the judge sees only `final_text` (+ optionally `reasoning_text`).
