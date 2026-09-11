@@ -54,16 +54,20 @@ implying the narrower tier has the broader tier's generality.
 - **Judge prompt**: done — `DECLINED` bucket, judge-independence rule,
   blinding instructions, Cohen's-kappa validation gate. Direct fix for the
   single-model write-up's "hand-grading, not blind" limitation.
-- **Roster check**: done at the documentation level (all three closed
-  providers spot-checked against current docs, 2026-09-08) — **not yet
-  live-verified**. That live check is the actual last blocker, not just a
-  formality; see below.
+- **Roster check**: **4/5 live-verified** (Claude Sonnet 5, GPT-5.6 Sol,
+  Qwen 3.8, Muse Glimmer 30B — all 2026-09-09). Only Gemini 3.1 Pro
+  remains, blocked on billing tier. See `roster_check.md`.
 - **Analysis plan**: done — two tiers, scope and epistemic framing fixed in
   advance so the write-up can't drift into overclaiming Tier 2's reach.
-- **Runners / analysis scripts**: blocked on the live roster check. Once
-  that's done, the runner is genuinely simple (same prompt template, same
-  two conditions, swap the API call per provider / local inference call) —
-  say the word.
+- **Runners**: **built 2026-09-10** — `runners/{prompts,api_runner,
+  local_runner,run_pilot}.py`. Request shapes transcribed from the live
+  roster check; not yet run end-to-end against live endpoints (smoke-test
+  first — `runners/README.md`).
+- **Judge + analysis**: **built 2026-09-10** — `analysis/{judge,analyze}.py`.
+  Judge refuses roster/sibling model names; analyze does Wilson CIs, cue
+  deltas, the pooled mixed-effects logit (with the <8-models caveat printed,
+  not just documented), and the Tier 2 per-model leak scan. The Cohen's-kappa
+  validation subset is a deliberate manual step, not scripted.
 
 ## Revised roster — 5 models, split by what each tier needs
 

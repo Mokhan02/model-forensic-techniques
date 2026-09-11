@@ -13,3 +13,7 @@ google-genai>=0.3
 bitsandbytes>=0.43   # only needed for --load-in-8bit on GPUs too small for full bf16
 torchvision          # AutoProcessor needs this for Muse Glimmer's image processor,
                      # even for text-only use (see roster_check.md)
+brotlicffi           # NOT the `Brotli` (Google) package — httpx2's BrotliDecoder
+                     # crashes with that one on Anthropic responses (roster_check.md)
+statsmodels>=0.14    # analysis: Wilson CIs + the pooled mixed-effects logit
+pandas               # analysis (also in the main repo requirements)
