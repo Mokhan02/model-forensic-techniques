@@ -162,7 +162,18 @@ def _extract_reasoning(model_key: str, full_text: str) -> tuple[str | None, str]
     raise ValueError(f"unknown reasoning_format '{fmt}'")
 
 
-def call_local_model(model_key: str, prompt: str) -> dict:
+BATCH_SIZE = int(os.environ.get("TRACK_A_LOCAL_BATCH", "4"))
+# Batches multiple reps of the SAME (model, task, condition) prompt into one
+# generate() call instead of n sequential single-sequence calls — decoding is
+# largely memory-bandwidth-bound per step, so this amortizes weight-loading
+# cost across sequences for a real wall-clock win. do_sample=True means each
+# batch row is an INDEPENDENT draw, not n copies of one sample — no change to
+# what's being measured. KV cache scales with batch x sequence length; 4 is
+# conservative for a 40GB card at max_new_tokens=4096. Lower
+# TRACK_A_LOCAL_BATCH if you OOM, raise it on an 80GB card.
+
+
+def call_local_model_batch(model_key: str, prompt: str, batch_size: int) -> list[dict]:
     model, tokenizer = _load(model_key)
     cfg = MODEL_CONFIGS[model_key]
 
@@ -175,29 +186,39 @@ def call_local_model(model_key: str, prompt: str) -> dict:
         messages, add_generation_prompt=True, return_tensors="pt",
         return_dict=True,
     )
-    enc = {k: v.to(model.device) for k, v in enc.items()}
-    prompt_len = enc["input_ids"].shape[1]
+    # identical prompt repeated batch_size times — no padding needed, all rows
+    # are the same length; sampling makes each row an independent draw
+    input_ids = enc["input_ids"].repeat(batch_size, 1).to(model.device)
+    attention_mask = enc["attention_mask"].repeat(batch_size, 1).to(model.device)
+    prompt_len = input_ids.shape[1]
 
     with torch.no_grad():
-        out = model.generate(**enc, **GENERATION_KWARGS,
-                             pad_token_id=tokenizer.eos_token_id)
-
-    full_text = tokenizer.decode(out[0][prompt_len:], skip_special_tokens=False)
-    reasoning_text, final_text = _extract_reasoning(model_key, full_text)
+        out = model.generate(input_ids=input_ids, attention_mask=attention_mask,
+                             **GENERATION_KWARGS, pad_token_id=tokenizer.eos_token_id)
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    raw_path = RAW_DIR / f"local_{model_key}_{int(time.time() * 1000)}.txt"
-    raw_path.write_text(full_text)
+    results = []
+    for row in range(batch_size):
+        full_text = tokenizer.decode(out[row][prompt_len:], skip_special_tokens=False)
+        reasoning_text, final_text = _extract_reasoning(model_key, full_text)
+        raw_path = RAW_DIR / f"local_{model_key}_{int(time.time() * 1000)}_{row}.txt"
+        raw_path.write_text(full_text)
+        truncated = out[row].shape[0] - prompt_len >= GENERATION_KWARGS["max_new_tokens"]
+        results.append({
+            "final_text": final_text,
+            "reasoning_visible": reasoning_text is not None,
+            "reasoning_text": reasoning_text,
+            "reasoning_tokens_billed": None,  # not meaningful for local inference
+            "raw_response_path": str(raw_path),
+            "truncated": truncated,
+        })
+    return results
 
-    truncated = out[0].shape[0] - prompt_len >= GENERATION_KWARGS["max_new_tokens"]
-    return {
-        "final_text": final_text,
-        "reasoning_visible": reasoning_text is not None,
-        "reasoning_text": reasoning_text,
-        "reasoning_tokens_billed": None,  # not meaningful for local inference
-        "raw_response_path": str(raw_path),
-        "truncated": truncated,
-    }
+
+def call_local_model(model_key: str, prompt: str) -> dict:
+    """Single-sample convenience wrapper (smoke-test / manual debugging).
+    run_cell uses call_local_model_batch directly for throughput."""
+    return call_local_model_batch(model_key, prompt, 1)[0]
 
 
 def run_cell(model_key: str, task_key: str, condition: str, n: int, out_path: str,
@@ -208,20 +229,47 @@ def run_cell(model_key: str, task_key: str, condition: str, n: int, out_path: st
         raise ValueError(f"unknown local model '{model_key}'")
 
     prompt = build_prompt(task_key, condition)
+    i = already_done
     with open(out_path, "a") as f:
-        for i in range(already_done, n):
+        while i < n:
+            bs = min(BATCH_SIZE, n - i)
             try:
-                result = call_local_model(model_key, prompt)
+                results = call_local_model_batch(model_key, prompt, bs)
+            except RuntimeError as e:
+                if "out of memory" not in str(e).lower():
+                    raise
+                if bs == 1:
+                    print(f"  [{model_key} {task_key}/{condition} #{i}] OOM even at "
+                          f"batch=1: {e}")
+                    i += 1
+                    continue
+                print(f"  [{model_key} {task_key}/{condition}] OOM at batch={bs} "
+                      f"(#{i}) — retrying this chunk at batch=1. Consider lowering "
+                      f"TRACK_A_LOCAL_BATCH for future cells.")
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                try:
+                    results = [call_local_model_batch(model_key, prompt, 1)[0]]
+                except Exception as e2:
+                    print(f"  [{model_key} {task_key}/{condition} #{i}] FAILED even "
+                          f"at batch=1: {type(e2).__name__}: {e2}")
+                    i += 1
+                    continue
             except Exception as e:
                 print(f"  [{model_key} {task_key}/{condition} #{i}] FAILED: "
                       f"{type(e).__name__}: {e}")
+                i += bs
                 continue
-            record = {
-                "model": model_key, "task": task_key, "condition": condition,
-                "sample_index": i, "prompt": prompt, **result,
-            }
-            f.write(json.dumps(record) + "\n")
+
+            for j, result in enumerate(results):
+                record = {
+                    "model": model_key, "task": task_key, "condition": condition,
+                    "sample_index": i + j, "prompt": prompt, **result,
+                }
+                f.write(json.dumps(record) + "\n")
             f.flush()
+            i += len(results)
+            print(f"  [{model_key} {task_key}/{condition}] {i}/{n} done")
 
 
 if __name__ == "__main__":
