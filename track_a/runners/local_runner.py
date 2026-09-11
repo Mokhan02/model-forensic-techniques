@@ -34,7 +34,8 @@ import warnings
 from pathlib import Path
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+                          StoppingCriteria, StoppingCriteriaList)
 
 # bitsandbytes' MatMul8bitLt logs this once per 8-bit matmul call — many per
 # forward pass, many forward passes per generated token, so a max_new_tokens=
@@ -173,6 +174,28 @@ BATCH_SIZE = int(os.environ.get("TRACK_A_LOCAL_BATCH", "4"))
 # TRACK_A_LOCAL_BATCH if you OOM, raise it on an 80GB card.
 
 
+class _Heartbeat(StoppingCriteria):
+    """Prints progress during a single generate() call — never actually stops
+    it (always returns False). Without this, a long generation is silent
+    between 'starting' and 'done', which is indistinguishable from hung."""
+
+    def __init__(self, label: str, prompt_len: int, interval: float = 20.0):
+        self.label = label
+        self.prompt_len = prompt_len
+        self.interval = interval
+        self.start = time.time()
+        self.last = self.start
+
+    def __call__(self, input_ids, scores, **kwargs) -> bool:
+        now = time.time()
+        if now - self.last >= self.interval:
+            n_new = input_ids.shape[1] - self.prompt_len
+            print(f"    ...{self.label}: {now - self.start:.0f}s elapsed, "
+                  f"~{n_new} new tokens/row so far", flush=True)
+            self.last = now
+        return False
+
+
 def call_local_model_batch(model_key: str, prompt: str, batch_size: int) -> list[dict]:
     model, tokenizer = _load(model_key)
     cfg = MODEL_CONFIGS[model_key]
@@ -192,9 +215,19 @@ def call_local_model_batch(model_key: str, prompt: str, batch_size: int) -> list
     attention_mask = enc["attention_mask"].repeat(batch_size, 1).to(model.device)
     prompt_len = input_ids.shape[1]
 
+    print(f"    generating: {model_key}, batch={batch_size}, "
+          f"prompt_len={prompt_len}, max_new_tokens="
+          f"{GENERATION_KWARGS['max_new_tokens']}", flush=True)
+    t0 = time.time()
+    heartbeat = StoppingCriteriaList([_Heartbeat(model_key, prompt_len)])
     with torch.no_grad():
         out = model.generate(input_ids=input_ids, attention_mask=attention_mask,
-                             **GENERATION_KWARGS, pad_token_id=tokenizer.eos_token_id)
+                             **GENERATION_KWARGS, pad_token_id=tokenizer.eos_token_id,
+                             stopping_criteria=heartbeat)
+    elapsed = time.time() - t0
+    n_new = out.shape[1] - prompt_len
+    print(f"    done: {elapsed:.0f}s for batch={batch_size} "
+          f"(~{elapsed/batch_size:.0f}s/sample equiv, {n_new} tokens/row)", flush=True)
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     results = []
