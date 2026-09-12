@@ -11,8 +11,11 @@ tolerates an added random-effect level without re-running the other four.
 Run from the REPO ROOT (outputs/ paths are relative). Smoke-test first:
     python track_a/runners/run_pilot.py --n 1 --dry-run
     python track_a/runners/run_pilot.py --n 1
-then the real thing:
-    python track_a/runners/run_pilot.py
+then the real thing (--full, NOT bare --n-less invocation: --n overrides
+every cell to the SAME n, which would break the per-cell Tier 2 design
+below — --full is the only path that leaves n_override=None):
+    python track_a/runners/run_pilot.py --full --dry-run
+    python track_a/runners/run_pilot.py --full
 
 Resumable: re-running counts existing rows per cell file and continues from
 there, so a crash / rate-limit / OOM mid-pilot doesn't cost the completed cells.
@@ -84,14 +87,28 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=None,
                     help="override n for ALL cells (for a smoke test, e.g. --n 1)")
+    ap.add_argument("--full", action="store_true",
+                    help="run the real pilot: per-cell n from target_n() "
+                         "(TIER1_N for most cells, TIER2_PLAIN_N for "
+                         "local+plain). The only way to leave n_override=None "
+                         "— --n would flatten every cell to the same count "
+                         "and silently break the Tier 2 design.")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the plan (incl. resume counts) without generating")
     args = ap.parse_args()
 
-    if args.n is None and not args.dry_run:
-        print("No --n and not --dry-run. Do a smoke test first:\n"
+    if args.n is None and not args.full and not args.dry_run:
+        print("No --n, --full, or --dry-run. Do a smoke test first:\n"
               "  python track_a/runners/run_pilot.py --n 1 --dry-run\n"
-              "  python track_a/runners/run_pilot.py --n 1")
+              "  python track_a/runners/run_pilot.py --n 1\n"
+              "then the real thing:\n"
+              "  python track_a/runners/run_pilot.py --full --dry-run\n"
+              "  python track_a/runners/run_pilot.py --full")
+        sys.exit(1)
+    if args.n is not None and args.full:
+        print("--n and --full are mutually exclusive: --n flattens every "
+              "cell to the same count, --full uses the real per-cell n. "
+              "Pick one.")
         sys.exit(1)
 
     run_all(n_override=args.n, dry_run=args.dry_run)
