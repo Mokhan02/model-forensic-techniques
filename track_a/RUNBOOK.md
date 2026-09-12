@@ -119,8 +119,10 @@ for f in sorted(glob.glob('outputs/track_a/generations/*.jsonl')):
         print(r['final_text'][:500]); print()
 "
 
-# specifically for Muse Glimmer — send this to review before the full run,
-# the to=self/to=user extraction regex is a guess from ~400 tokens
+# specifically for Muse Glimmer — the to=self/to=user extraction regex was
+# verified live 2026-09-12 against a full completion (final_text came back
+# clean, no leaked channel-header text); still worth a quick eyeball here
+# since that was one sample on one task/condition
 cat outputs/track_a/raw_responses/local_muse_glimmer-30b_*.txt
 ```
 
@@ -128,8 +130,12 @@ cat outputs/track_a/raw_responses/local_muse_glimmer-30b_*.txt
 - `final_text` is actual code, not an echo of the prompt or empty
 - `reasoning_visible` / `reasoning_text` populated for the local models
 - for Muse Glimmer: does `reasoning_text` end where the final answer begins,
-  or did the regex mis-split? If it looks wrong, send the raw `.txt` — don't
-  scale until the extraction is confirmed against real output.
+  or did the regex mis-split? If it looks wrong, send the raw `.txt`.
+- for Qwen: does the generation actually converge (`truncated=False`,
+  `reasoning_visible=True`) rather than running to the token cap? If it
+  doesn't, don't add a repetition_penalty or no_repeat_ngram_size fix without
+  reading local_runner.py's module docstring first — both were already tried
+  and both broke this model's tasks in different ways (2026-09-12).
 
 If a local model degenerates (repeats the prompt), that's the greedy-decode
 loop from the roster check — the runner already uses sampling +
