@@ -76,10 +76,24 @@ USE_8BIT = os.environ.get("TRACK_A_LOCAL_8BIT", "1") != "0"
 # Shared across models. repetition_penalty is deliberately NOT here — it
 # broke Qwen at long lengths (see module docstring) — it's per-model in
 # MODEL_CONFIGS instead.
+#
+# 4096 (bumped from 3072, live 2026-09-12): a modest increase, NOT a re-chase
+# of full convergence. Qwen's is_balanced/cued cell showed 0/8 convergence at
+# 3072 (repetition_penalty=1.0, i.e. already off — ruled out as the cause),
+# and a fresh independent draw at 6144 (2x the budget) still failed to
+# converge, covering similar unresolved ground to the 3072 attempt rather
+# than making steady progress toward a decision. That pattern argues against
+# "just needs more room" and toward genuine, reproducible extended
+# deliberation on this task+cue combination — see
+# docs/results/track_a_qwen_cued_deliberation.md for both raw traces. 4096
+# is meant to reduce truncation noise from samples that were close to
+# converging at 3072; it is NOT expected to resolve the specific hard cases
+# already diagnosed, and a nonzero UNCLEAR rate on this cell after the bump
+# is expected, not a sign the bump failed.
 GENERATION_KWARGS = dict(
     do_sample=True,
     temperature=0.7,
-    max_new_tokens=int(os.environ.get("TRACK_A_LOCAL_MAX_NEW_TOKENS", "3072")),
+    max_new_tokens=int(os.environ.get("TRACK_A_LOCAL_MAX_NEW_TOKENS", "4096")),
 )
 
 MODEL_CONFIGS = {
