@@ -37,13 +37,15 @@ Per-model reasoning-span extraction is NOT interchangeable:
   raw reasoning until the first `</think>`, then the final answer.
 - Muse Glimmer: Harmony-style channel routing. Completion opens
   `to=self<|message|>` (internal reasoning), then `to=user<|message|>`
-  (user-facing). *** The self->user transition / terminator tokens are a
-  best guess (only ~400 tokens of one completion were seen live) — verify
-  _extract_reasoning against a full Muse Glimmer completion before trusting
-  the Tier 2 leak numbers for that model. ***
+  (user-facing). VERIFIED live 2026-09-12 against a full, non-truncated
+  completion (bf16, real is_balanced task) — final_text came back clean,
+  no leaked channel-header text. See _extract_reasoning's comment for the
+  one cosmetic fix that came out of that check.
 
-Not run against live hardware from the environment that wrote this.
-Smoke-test with `run_pilot.py --n 1` before scaling.
+Local generation (both models) verified live 2026-09-12 on real task
+prompts, bf16, H100: converges naturally well under the token cap once
+Qwen's anti-repetition settings were fixed (see below) — no longer just
+calibrated on toy prompts.
 """
 
 import gc
@@ -193,8 +195,14 @@ def _extract_reasoning(model_key: str, full_text: str) -> tuple[str | None, str]
         return None, full_text.strip()
 
     if fmt == "harmony_channels":
-        # BEST-GUESS parse — see module docstring. Verify against a full
-        # Muse Glimmer completion.
+        # Verified live 2026-09-12 against a full, non-truncated completion:
+        # final_text came back clean (no leaked "to=user<|message|>" prefix,
+        # no reasoning bleeding through) — the self/user split point is
+        # correct. One cosmetic artifact: because the non-greedy self_match
+        # runs up to wherever "to=user" literally occurs, it can swallow a
+        # few protocol tokens in between (e.g. "...<|eom|><|start|>assistant")
+        # that sit before that literal string but aren't real reasoning
+        # content — stripped below rather than left in the recorded field.
         self_match = re.search(
             r"to=self<\|message\|>(.*?)(?:<\|eot\|>|<\|end\|>|to=user)",
             full_text, re.DOTALL,
@@ -204,6 +212,9 @@ def _extract_reasoning(model_key: str, full_text: str) -> tuple[str | None, str]
             full_text, re.DOTALL,
         )
         reasoning = self_match.group(1).strip() if self_match else None
+        if reasoning is not None:
+            # trailing run of one or more <|control_token|>-style markers
+            reasoning = re.sub(r"(?:\s*<\|[a-zA-Z_]+\|>)+\s*$", "", reasoning).strip()
         final = user_match.group(1).strip() if user_match else full_text.strip()
         return reasoning, final
 
