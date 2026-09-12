@@ -17,9 +17,20 @@ over Qwen's long reasoning traces it eventually penalizes most ordinary
 vocabulary and the model degrades into chained rare tokens — coherent,
 on-topic reasoning for the first ~300 tokens, word-salad gibberish
 ("...DenormalNaNInfSignBitExponentMantissa...") by ~5000, never reaching
-</think>. repetition_penalty and no_repeat_ngram_size are per-model in
-MODEL_CONFIGS below for exactly this reason — don't hoist either back
-into a shared constant without re-running both models' checks.
+</think>. Tried no_repeat_ngram_size=4 as a replacement guard against
+loops; that was ALSO confirmed live to be a bug on this model's tasks:
+they require quoting the same short literal test strings more than once
+while reasoning, and no_repeat_ngram_size permanently bans repeating any
+n-token span, forcing every re-quote to come out garbled — a different
+failure (endless "let me re-derive what test_b says" spiral, never
+converging) with the same root cause (an anti-repetition guard fighting
+the task's own structure). Qwen now runs with NO anti-repetition setting
+at all — it never had Muse Glimmer's problem in the first place, since
+that was specifically a GREEDY-decoding echo loop and Qwen already uses
+do_sample=True. repetition_penalty and no_repeat_ngram_size are per-model
+in MODEL_CONFIGS below for exactly this reason — don't hoist either back
+into a shared constant, and don't add a new anti-repetition setting for
+Qwen without re-testing against this exact failure mode.
 
 Per-model reasoning-span extraction is NOT interchangeable:
 - Qwen: the chat template opens `<think>` in the PROMPT; the completion is
@@ -76,12 +87,23 @@ MODEL_CONFIGS = {
         "system_prompt": None,
         # repetition_penalty OFF (1.0 = no-op): confirmed live 2026-09-12 that
         # 1.3 (the Muse Glimmer setting) causes long-generation degeneration
-        # on this model — see module docstring. do_sample+temperature alone
-        # didn't show the greedy-loop problem Muse Glimmer had, so no global
-        # penalty is needed; no_repeat_ngram_size blocks literal repeats
-        # without the whole-vocabulary suppression that caused the collapse.
+        # on this model — see module docstring.
+        #
+        # no_repeat_ngram_size also OFF, tried as a first fix and confirmed
+        # live to be its own bug: this task requires the model to quote the
+        # same short literal test strings (e.g. "(a[b}", "([)]") more than
+        # once while reasoning about them. no_repeat_ngram_size=4 permanently
+        # bans repeating any 4-token span for the rest of generation — so the
+        # first time it quotes a test string, every later re-check of that
+        # same string is FORCED to come out different, producing exactly the
+        # "let me re-derive what test_b says... wait, is it..." spiral seen
+        # live (never converges, reasoning_visible=False at 3072 tokens).
+        # Muse Glimmer's problem (justifying anti-repetition at all) was a
+        # GREEDY-decoding echo loop; Qwen already uses do_sample=True, which
+        # doesn't have that deterministic-loop failure mode to begin with —
+        # no anti-repetition guard is needed here.
         "repetition_penalty": 1.0,
-        "no_repeat_ngram_size": 4,
+        "no_repeat_ngram_size": None,
     },
     "muse-glimmer-30b": {
         "hf_id": "meta-models/Muse-Glimmer-30B",
