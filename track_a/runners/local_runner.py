@@ -5,11 +5,21 @@ Local inference runner — Qwen 3.8 and Muse Glimmer 30B, both loaded 8-bit
 numbers, not a stopgap. If you move to an 80GB card, set load_in_8bit=False
 in MODEL_CONFIGS and re-verify a couple of cells against the 8-bit ones).
 
-DECODING CONFIG IS NOT OPTIONAL. Greedy decoding (do_sample=False) produced
-a repetition-loop failure on Muse Glimmer during the live check
-(verbatim-echoed the prompt, zero reasoning). Both models use sampling +
-repetition_penalty below. Don't switch to greedy without re-running the
-check that caught this.
+DECODING CONFIG IS NOT OPTIONAL, AND IT IS NOT UNIFORM ACROSS MODELS.
+Greedy decoding (do_sample=False) produced a repetition-loop failure on
+Muse Glimmer during the live check (verbatim-echoed the prompt, zero
+reasoning) — that model needs do_sample + repetition_penalty=1.3.
+Applying that same repetition_penalty to Qwen caused a DIFFERENT failure
+(confirmed live 2026-09-12): HF's repetition_penalty discourages every
+token that has appeared anywhere in the context, for the rest of
+generation, with no decay or locality. Harmless over a short completion;
+over Qwen's long reasoning traces it eventually penalizes most ordinary
+vocabulary and the model degrades into chained rare tokens — coherent,
+on-topic reasoning for the first ~300 tokens, word-salad gibberish
+("...DenormalNaNInfSignBitExponentMantissa...") by ~5000, never reaching
+</think>. repetition_penalty and no_repeat_ngram_size are per-model in
+MODEL_CONFIGS below for exactly this reason — don't hoist either back
+into a shared constant without re-running both models' checks.
 
 Per-model reasoning-span extraction is NOT interchangeable:
 - Qwen: the chat template opens `<think>` in the PROMPT; the completion is
@@ -50,10 +60,12 @@ RAW_DIR = Path("outputs/track_a/raw_responses")
 # no quantization caveat. Applies to BOTH local models.
 USE_8BIT = os.environ.get("TRACK_A_LOCAL_8BIT", "1") != "0"
 
+# Shared across models. repetition_penalty is deliberately NOT here — it
+# broke Qwen at long lengths (see module docstring) — it's per-model in
+# MODEL_CONFIGS instead.
 GENERATION_KWARGS = dict(
     do_sample=True,
     temperature=0.7,
-    repetition_penalty=1.3,   # verified necessary on Muse Glimmer — leave alone
     max_new_tokens=int(os.environ.get("TRACK_A_LOCAL_MAX_NEW_TOKENS", "3072")),
 )
 
@@ -62,6 +74,14 @@ MODEL_CONFIGS = {
         "hf_id": "Qwen/Qwen3.8-27B",   # bf16 checkpoint; FP8 one fails on cc<8.9
         "reasoning_format": "think_tags",
         "system_prompt": None,
+        # repetition_penalty OFF (1.0 = no-op): confirmed live 2026-09-12 that
+        # 1.3 (the Muse Glimmer setting) causes long-generation degeneration
+        # on this model — see module docstring. do_sample+temperature alone
+        # didn't show the greedy-loop problem Muse Glimmer had, so no global
+        # penalty is needed; no_repeat_ngram_size blocks literal repeats
+        # without the whole-vocabulary suppression that caused the collapse.
+        "repetition_penalty": 1.0,
+        "no_repeat_ngram_size": 4,
     },
     "muse-glimmer-30b": {
         "hf_id": "meta-models/Muse-Glimmer-30B",
@@ -69,6 +89,11 @@ MODEL_CONFIGS = {
         "system_prompt": "Reasoning strength: high",  # confirmed correct default
         # architectures: ["MuseGlimmerForConditionalGeneration"] — not under
         # AutoModelForCausalLM's mapping; _load() falls back to that class.
+        # repetition_penalty=1.3 verified necessary (live check 2026-09-09:
+        # greedy decoding echoed the prompt in a loop). Leave alone unless
+        # re-tested — this is a DIFFERENT model than the one that broke above.
+        "repetition_penalty": 1.3,
+        "no_repeat_ngram_size": None,
     },
 }
 # precision is controlled by USE_8BIT (env TRACK_A_LOCAL_8BIT), not per-model —
@@ -215,14 +240,21 @@ def call_local_model_batch(model_key: str, prompt: str, batch_size: int) -> list
     attention_mask = enc["attention_mask"].repeat(batch_size, 1).to(model.device)
     prompt_len = input_ids.shape[1]
 
+    # repetition_penalty / no_repeat_ngram_size are per-model — see
+    # MODEL_CONFIGS and the module docstring for why these aren't shared.
+    gen_kwargs = dict(GENERATION_KWARGS, repetition_penalty=cfg.get("repetition_penalty", 1.0))
+    if cfg.get("no_repeat_ngram_size"):
+        gen_kwargs["no_repeat_ngram_size"] = cfg["no_repeat_ngram_size"]
+
     print(f"    generating: {model_key}, batch={batch_size}, "
           f"prompt_len={prompt_len}, max_new_tokens="
-          f"{GENERATION_KWARGS['max_new_tokens']}", flush=True)
+          f"{gen_kwargs['max_new_tokens']}, repetition_penalty="
+          f"{gen_kwargs['repetition_penalty']}", flush=True)
     t0 = time.time()
     heartbeat = StoppingCriteriaList([_Heartbeat(model_key, prompt_len)])
     with torch.no_grad():
         out = model.generate(input_ids=input_ids, attention_mask=attention_mask,
-                             **GENERATION_KWARGS, pad_token_id=tokenizer.eos_token_id,
+                             **gen_kwargs, pad_token_id=tokenizer.eos_token_id,
                              stopping_criteria=heartbeat)
     elapsed = time.time() - t0
     n_new = out.shape[1] - prompt_len
