@@ -294,14 +294,38 @@ def call_local_model_batch(model_key: str, prompt: str, batch_size: int) -> list
     print(f"    done: {elapsed:.0f}s for batch={batch_size} "
           f"(~{elapsed/batch_size:.0f}s/sample equiv, {n_new} tokens/row)", flush=True)
 
+    # PER-ROW truncation/trimming, not batch-tensor-length. In a batched
+    # generate() call, HF doesn't stop a row early just because it hit EOS —
+    # it keeps stepping the whole batch until every row is done, force-
+    # feeding finished rows their own EOS token for every remaining step.
+    # Checking out[row].shape[0] (shared across the whole batch) against
+    # max_new_tokens confirmed live 2026-09-12 to mislabel rows that
+    # actually finished on their own as "truncated" whenever ANY other row
+    # in the same batch ran long, AND left the padding EOS tokens in the
+    # decoded text (skip_special_tokens=False renders them as literal text,
+    # e.g. "<|im_end|>" repeated dozens of times appended to real output).
+    # Fix: find each row's own first EOS token in its actual token ids,
+    # trim there before decoding, and base `truncated` on whether that
+    # token ever appeared for THIS row.
+    eos_ids = getattr(model.generation_config, "eos_token_id", None) or tokenizer.eos_token_id
+    if not isinstance(eos_ids, (list, tuple)):
+        eos_ids = [eos_ids]
+    eos_ids = {int(t) for t in eos_ids if t is not None}
+
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     results = []
     for row in range(batch_size):
-        full_text = tokenizer.decode(out[row][prompt_len:], skip_special_tokens=False)
+        row_ids = out[row][prompt_len:].tolist()
+        eos_positions = [i for i, t in enumerate(row_ids) if t in eos_ids]
+        if eos_positions:
+            row_ids = row_ids[:eos_positions[0] + 1]  # drop batch-padding after own EOS
+            truncated = False
+        else:
+            truncated = True  # cut off by max_new_tokens before reaching its own EOS
+        full_text = tokenizer.decode(row_ids, skip_special_tokens=False)
         reasoning_text, final_text = _extract_reasoning(model_key, full_text)
         raw_path = RAW_DIR / f"local_{model_key}_{int(time.time() * 1000)}_{row}.txt"
         raw_path.write_text(full_text)
-        truncated = out[row].shape[0] - prompt_len >= GENERATION_KWARGS["max_new_tokens"]
         results.append({
             "final_text": final_text,
             "reasoning_visible": reasoning_text is not None,
