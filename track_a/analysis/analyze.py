@@ -125,7 +125,12 @@ def tier1_pooled_model(df: pd.DataFrame):
 def tier2_leak_analysis(df: pd.DataFrame) -> dict:
     """Per model, plain condition only, open-weight only. Not pooled."""
     def leaked(txt):
-        return bool(txt) and any(k in txt.lower() for k in REVIEW_KEYWORDS)
+        # rows where reasoning never reached </think> (local_runner's
+        # _extract_reasoning returns reasoning_text=None) round-trip through
+        # JSON as null -> pandas loads that as NaN (a float), and bool(NaN)
+        # is True, so a plain `bool(txt)` check doesn't catch it and crashes
+        # on .lower(). isinstance() handles None/NaN/any non-string cleanly.
+        return isinstance(txt, str) and any(k in txt.lower() for k in REVIEW_KEYWORDS)
 
     out = {}
     for model in TIER2_MODELS:
