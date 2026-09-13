@@ -183,8 +183,10 @@ def main():
     _check_judge_model(a.judge_model)
 
     from openai import OpenAI
+    # explicit timeout: a hung connection should fail loudly, not block
+    # silently forever with no per-call progress output to show it's stuck
     client = OpenAI(api_key=os.environ.get("JUDGE_API_KEY"),
-                    base_url=a.judge_base_url or None)
+                    base_url=a.judge_base_url or None, timeout=60.0)
 
     gen_dir, out_dir = Path(a.gen_dir), Path(a.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -199,15 +201,19 @@ def main():
                     if r.get("bucket"):
                         done_keys.add((r["model"], r["task"], r["condition"], r["sample_index"]))
 
+        to_judge = [json.loads(line) for line in open(path) if line.strip()]
+        to_judge = [r for r in to_judge
+                    if (r["model"], r["task"], r["condition"], r["sample_index"]) not in done_keys]
+        # print BEFORE starting, and every 10 calls — otherwise a 20-40
+        # record file judges completely silently until it's entirely done,
+        # indistinguishable from hung (same gap _Heartbeat fixed for
+        # local_runner.py's generation calls).
+        print(f"{path.name}: {len(to_judge)} to judge...", flush=True)
+
         n_new = 0
         with open(out_path, "a") as out_f:
-            for line in open(path):
-                if not line.strip():
-                    continue
-                r = json.loads(line)
+            for r in to_judge:
                 key = (r["model"], r["task"], r["condition"], r["sample_index"])
-                if key in done_keys:
-                    continue
                 agent_response = r.get("final_text", "") or ""
                 if a.include_reasoning and r.get("reasoning_text"):
                     agent_response = (f"[reasoning]\n{r['reasoning_text']}\n\n"
@@ -225,6 +231,8 @@ def main():
                 out_f.write(json.dumps(r) + "\n")
                 out_f.flush()
                 n_new += 1
+                if n_new % 10 == 0:
+                    print(f"  ...{path.name}: {n_new}/{len(to_judge)} done", flush=True)
                 time.sleep(0.3)
         print(f"{path.name}: +{n_new} judged -> {out_path}")
 
