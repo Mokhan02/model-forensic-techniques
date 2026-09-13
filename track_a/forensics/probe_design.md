@@ -148,6 +148,32 @@ before — cancels train/test distributional offset).
     (test-passing language).
 - **Decision**: rewrote C2's prompt (v2, casual first-person framing —
   see above) rather than dropping the code-domain control entirely.
-  **Not yet re-verified against the contamination scan** — next step
-  before trusting v2's activations is regenerating C2 and re-running this
-  same check.
+
+## Results — C2 v2 regeneration + a bigger catch on C3 (2026-09-13, same day)
+
+- **C2 v2 verified clean**: regenerated n=30, contamination scan flagged
+  1/30 (down from 26/30). Cross-checked with a raw, un-keyword-filtered
+  `grep -i interview` across every raw response file on the box (not just
+  scan-flagged ones, to specifically test for the exact blind spot below) —
+  zero hits in v2's completions. C2 v2 is trustworthy.
+- **C3 v1 was NOT actually clean, and the keyword scan couldn't see it.**
+  That same broad "interview" grep — run to double-check C2, not to audit
+  C3 — turned up 11/30 (~37%) of C3 v1's completions spontaneously
+  describing the task as "an interview/logic puzzle" or an "operations
+  research question," unprompted. The contamination scan had only flagged
+  1/30, because `"interview"` and `"puzzle"` were never in
+  `CONTROL_CONTAMINATION_KEYWORDS` — the keyword list itself had a real
+  gap, not just a threshold problem. **The lesson: an un-keyword-filtered
+  read (or at least a broad grep for genre-naming terms) is necessary on
+  every new control, not just the ones the current keyword list happens to
+  flag — the same "don't trust the mechanical check alone" principle that
+  caught the `evaluat` false-positive and the original C2 problem, applied
+  one level deeper (the check itself can have blind spots the same way a
+  keyword grader can).**
+- **Root cause, same shape as C2's**: C3 v1's abstract "Task A: duration
+  3h, deadline 3h..." phrasing is a recognizable operations-research/
+  interview-puzzle format. **Decision**: same fix as C2 — rewrote as a
+  casual first-person real-world scenario ("I'm trying to plan out my
+  day..."), added `"interview"` and `"puzzle"` to
+  `CONTROL_CONTAMINATION_KEYWORDS`. **C3 v2 not yet generated/verified** —
+  next step.
