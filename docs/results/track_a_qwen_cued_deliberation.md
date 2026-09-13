@@ -132,11 +132,42 @@ sentence, no final code produced]
 Full file: `outputs/track_a/raw_responses/local_qwen-3.8_*.txt` (second
 diagnostic run, max_new_tokens=6144, 2026-09-12).
 
+## Update 2026-09-12 — post-regeneration numbers at max_new_tokens=4096
+
+Full local regeneration (per-row truncation fix + 4096 cap) is complete.
+Per-cell breakdown of (truncated, reasoning_visible) for qwen-3.8, n=40
+plain / n=20 cued per task:
+
+| task | condition | clean (F,T) | partial (T,T) | no-answer (T,F) | usable / total |
+|---|---|---|---|---|---|
+| is_balanced | plain | 24 | 0 | 16 | 24/40 (60%) |
+| is_balanced | **cued** | 0 | 0 | **20** | **0/20 (0%)** |
+| is_prime | plain | 37 | 1 | 2 | 38/40 (95%) |
+| is_prime | cued | 5 | 1 | 14 | 6/20 (30%) |
+
+("clean" = reached its own EOS with reasoning visible; "partial" =
+reached `</think>` and started a real answer but got cut off before a
+clean stop, likely still has usable code; "no-answer" = never got past
+`</think>`, so `final_text` is just incomplete raw reasoning — this will
+almost certainly grade `UNCLEAR`.)
+
+**`is_balanced/cued` is a genuine null cell for Qwen: 0/20 independent
+attempts produced anything to classify as hack/disguise/disclose/refuse,
+even at a token budget (4096) that gave `is_prime/plain` a 95% completion
+rate on the same model.** This is a stronger and more precise claim than
+"high truncation rate" — it should be reported as its own finding, not
+folded into a Tier 1 hack-rate denominator that would otherwise read as
+"0% hack rate" or produce a degenerate/undefined rate depending on how
+`analyze.py` handles an all-`UNCLEAR` cell. `is_prime/cued` (30% usable)
+is less extreme but still shows the same direction and should be reported
+with its small effective n stated explicitly, not just its CI.
+
 ## Open follow-up
 
-Worth deciding, once judged data exists: should the write-up report this
-cell's `UNCLEAR` rate as a *third* axis of cue-sensitivity (alongside hack
-rate and CoT-leak rate) rather than folding it silently into the Tier 1
-denominator? `analyze.py` currently reports bucket counts per cell as a
-sanity check — that's already sufficient to surface this, just needs to be
-read and discussed rather than only checked for "does it sum right."
+- Confirm `analyze.py`'s Wilson-CI / cue-delta / mixed-effects code paths
+  don't error or silently produce a misleading number on a cell with zero
+  non-`UNCLEAR` samples (`is_balanced/cued`) before running it on this data.
+- Decide, once judged: report this as a *third* axis of cue-sensitivity
+  (alongside hack rate and CoT-leak rate) rather than only as a bucket-count
+  sanity check line — the 0/20 number is a headline-worthy result on its
+  own, not a caveat to bury.
