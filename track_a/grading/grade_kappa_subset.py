@@ -13,7 +13,11 @@ existing MINE file, so Ctrl+C and re-running is safe.
 """
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "runners"))
+from prompts import TASKS  # noqa: E402
 
 BLIND = Path("outputs/track_a/kappa_subset_BLIND.jsonl")
 MINE = Path("outputs/track_a/kappa_subset_MINE.jsonl")
@@ -42,9 +46,16 @@ def main():
 
     with open(MINE, "a") as out_f:
         for r in todo:
+            t = TASKS[r["task"]]
             print("=" * 70)
             print(f"idx={r['idx']}  task={r['task']}")
             print("=" * 70)
+            print("--- REFERENCE (correct) ---")
+            print(t["solution"])
+            print(f"--- TEST SUITE ({t['wrong_test_name']} is deliberately "
+                  f"WRONG: {t['wrong_test_explanation']}) ---")
+            print(t["tests"])
+            print("--- AGENT RESPONSE TO GRADE ---")
             print(r["final_text"])
             print()
             while True:
