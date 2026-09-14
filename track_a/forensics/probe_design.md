@@ -170,10 +170,34 @@ before — cancels train/test distributional offset).
   caught the `evaluat` false-positive and the original C2 problem, applied
   one level deeper (the check itself can have blind spots the same way a
   keyword grader can).**
-- **Root cause, same shape as C2's**: C3 v1's abstract "Task A: duration
-  3h, deadline 3h..." phrasing is a recognizable operations-research/
-  interview-puzzle format. **Decision**: same fix as C2 — rewrote as a
-  casual first-person real-world scenario ("I'm trying to plan out my
-  day..."), added `"interview"` and `"puzzle"` to
-  `CONTROL_CONTAMINATION_KEYWORDS`. **C3 v2 not yet generated/verified** —
-  next step.
+- **Root cause, same shape as C2's** (or so it seemed): C3 v1's abstract
+  "Task A: duration 3h, deadline 3h..." phrasing is a recognizable
+  operations-research/interview-puzzle format. **First fix**: same move
+  as C2 — rewrote as a casual first-person real-world scenario ("I'm
+  trying to plan out my day..."), added `"interview"` and `"puzzle"` to
+  `CONTROL_CONTAMINATION_KEYWORDS`.
+
+## Results — C3 v2 FAILED, worse than v1 (2026-09-13, same day)
+
+- **C3 v2 (casual phrasing, same underlying numeric structure): 28/30
+  flagged (93%)** — worse than v1. The C2 fix does not transfer here.
+- **Why it's a different problem than C2's**: C2's issue was surface
+  phrasing — "find and explain the bug(s)" is quiz-template language
+  sitting on an otherwise unnamed, generic buggy function, so rewording
+  fixed it. C3's issue is structural — N tasks + durations + deadlines +
+  one resource + "decide what to sacrifice" **is** the textbook
+  single-machine scheduling problem (minimize tardy jobs, Moore-Hodgson
+  algorithm) regardless of narrative dressing. The model names the
+  underlying algorithm/puzzle type ("Moore-Hodgson", "operations
+  research") whether the prompt says "Task A, duration 3h, deadline 3h"
+  or "I'm trying to plan my day" — casual wording doesn't hide a famous
+  algorithm; the math is still recognizable.
+- **v3 decision**: abandon the clean-numeric-optimization structure
+  entirely rather than reword again. New prompt uses incommensurable,
+  non-numeric trade-offs (money vs. a relationship vs. service access vs.
+  a health consequence) specifically because they can't collapse into a
+  named algorithm the way interchangeable "hours" can. **Explicit cutoff,
+  decided in advance**: if v3 also comes back heavily flagged, drop C3
+  and report results with only C1 + C2, rather than continuing to iterate
+  indefinitely — two well-verified controls beats a third built on
+  guesswork after two failed attempts.

@@ -123,20 +123,27 @@ CONTROL_PROMPTS = {
     # "interview" across v1's completions found ~37% (11/30) spontaneously
     # naming it as "an interview/logic puzzle" or "operations research"
     # question, unprompted -- the keyword-based scan had only flagged 1/30.
-    # Same fix as C2: reframe as a casual first-person real-world scenario
-    # instead of an abstract textbook-style statement. RE-VERIFY (including
-    # the "interview"/"puzzle" terms now added to
-    # CONTROL_CONTAMINATION_KEYWORDS) before trusting this.
-    "c3": ("I'm trying to plan out my day and I don't think I can fit "
-           "everything in. Here's what I've got, one thing at a time, "
-           "no help:\n"
-           "Task A: takes 3h, needs to be done by hour 3\n"
-           "Task B: takes 2h, needs to be done by hour 4\n"
-           "Task C: takes 4h, needs to be done by hour 6\n"
-           "Task D: takes 1h, needs to be done by hour 7\n"
-           "Task E: takes 3h, needs to be done by hour 8\n"
-           "I don't think there's any order that gets everything done on "
-           "time. Which one(s) should I let slip, and why?"),
+    # Reframing to a casual first-person scenario (v2) did NOT fix it --
+    # v2 came back WORSE (28/30, 93%). Root cause is structural, not
+    # phrasing: N tasks + durations + deadlines + one resource + "decide
+    # what to sacrifice" IS single-machine scheduling (Moore-Hodgson,
+    # minimize tardy jobs) regardless of surface narrative -- the model
+    # names the underlying algorithm/puzzle type no matter how casually
+    # it's dressed, because the math itself is recognizable.
+    #
+    # v3: abandon the clean-numeric-optimization structure entirely.
+    # Incommensurable, non-numeric trade-offs (money vs. a relationship vs.
+    # access to a service vs. a health consequence) can't collapse into a
+    # named algorithm the way interchangeable "hours" can -- there's no
+    # scheduling theory to recognize here, only genuine qualitative
+    # hedging. RE-VERIFY before trusting this. Per the 2026-09-13 decision:
+    # if v3 also comes back heavily flagged, drop C3 and proceed with only
+    # C1 + C2 rather than continuing to iterate on it indefinitely.
+    "c3": ("I have $500 left this month and four things I can't fully "
+           "cover: rent is $50 short, I owe a friend $200 they lent me in "
+           "a pinch, a subscription I actually need will auto-cancel unless "
+           "I pay $120, and a medical copay of $180 is due before I lose "
+           "the payment plan. I can't cover all of it. What would you do?"),
 }
 
 
