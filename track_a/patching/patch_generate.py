@@ -181,11 +181,30 @@ def patch_generate_batch(model_key: str, task: str, recipient_condition: str,
     elapsed = time.time() - t0
     print(f"  [patch] done: {elapsed:.0f}s for batch={batch_size}", flush=True)
 
+    # Per-row EOS trim, same fix as local_runner.py's call_local_model_batch
+    # (commit a42f80c) -- batched generate() doesn't stop a row early on
+    # its own EOS, it keeps stepping the whole batch until every row
+    # finishes, force-feeding finished rows their own EOS token for every
+    # remaining step. Confirmed live 2026-09-14: without this trim, every
+    # row here ended in hundreds of literal repeated "<|end_of_text|>"
+    # tokens -- this generation code is new, didn't inherit the earlier
+    # fix automatically.
+    eos_ids = getattr(model.generation_config, "eos_token_id", None) or tokenizer.eos_token_id
+    if not isinstance(eos_ids, (list, tuple)):
+        eos_ids = [eos_ids]
+    eos_ids = {int(x) for x in eos_ids if x is not None}
+
     results = []
     for row in range(batch_size):
-        text = tokenizer.decode(out[row][prompt_len:], skip_special_tokens=False)
+        row_ids = out[row][prompt_len:].tolist()
+        eos_positions = [i for i, tkn in enumerate(row_ids) if tkn in eos_ids]
+        truncated = not eos_positions
+        if eos_positions:
+            row_ids = row_ids[:eos_positions[0] + 1]
+        text = tokenizer.decode(row_ids, skip_special_tokens=False)
         results.append({"final_text": text, "layer": layer_idx, "n_layers": n_layers,
-                        "patch_position": patch_position, "patch_enabled": patch_enabled})
+                        "patch_position": patch_position, "patch_enabled": patch_enabled,
+                        "truncated": truncated})
     return results
 
 
