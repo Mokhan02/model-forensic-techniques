@@ -221,6 +221,12 @@ def main():
                     help="run the identical code path with the hook inert -- the "
                          "unpatched baseline, or the self-patch sanity check if "
                          "--donor matches --recipient-condition's own capture")
+    ap.add_argument("--random-control", action="store_true",
+                    help="patch_design.md's random-direction control: replace the "
+                         "loaded donor vector's CONTENT with random noise of the "
+                         "same L2 norm, at the same layer/position. --donor is still "
+                         "required (used only to determine the norm to match).")
+    ap.add_argument("--seed", type=int, default=0, help="--random-control seed")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
@@ -234,7 +240,19 @@ def main():
                           max(0, round(a.layer_frac * (n_layers_in_donor - 1))))
     donor_vec = donor_npz["hidden"][layer_idx_guess]
     donor_meta = json.loads(donor_path.with_suffix(".json").read_text())
-    print(f"donor: {donor_meta}  (layer {layer_idx_guess}/{n_layers_in_donor})")
+
+    if a.random_control:
+        rng = np.random.default_rng(a.seed)
+        real_norm = float(np.linalg.norm(donor_vec))
+        noise = rng.standard_normal(donor_vec.shape).astype(donor_vec.dtype)
+        donor_vec = noise * (real_norm / (np.linalg.norm(noise) + 1e-8))
+        donor_meta = {**donor_meta, "random_control": True, "seed": a.seed,
+                      "matched_norm": real_norm}
+        print(f"RANDOM CONTROL: content replaced with noise, norm matched to "
+              f"{real_norm:.3f} (from {donor_meta.get('condition')} donor, "
+              f"layer {layer_idx_guess}/{n_layers_in_donor})")
+    else:
+        print(f"donor: {donor_meta}  (layer {layer_idx_guess}/{n_layers_in_donor})")
 
     results = patch_generate_batch(MODEL_KEY, a.task, a.recipient_condition,
                                    donor_vec, a.layer_frac, a.n,
