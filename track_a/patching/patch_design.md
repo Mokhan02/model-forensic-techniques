@@ -90,15 +90,21 @@ proceeds unmodified (normal sampling, same decoding config as the pilot —
    vector matched to the mean norm of real donor vectors at that layer
    (not from any real run). If this also shifts hack rate, the effect is
    about perturbation magnitude, not content.
-2. **Same-condition control** (replaces the original "mismatched-pair"
-   idea, which assumed distinct task instances that don't exist). Patch a
-   `plain`-condition donor vector into a *different* `plain` recipient
-   (and `cued`→`cued` likewise) — same mechanical act of overwriting the
-   position with a real, independently-sampled activation, but with no
-   condition difference at all. If this shifts behavior about as much as
-   the cross-condition patch, the effect isn't about cued-vs-plain
-   content specifically, just about disrupting this position with any
-   plausible real activation.
+2. **Self-patch sanity check** (replaces both the original "mismatched-
+   pair" idea, which assumed distinct task instances that don't exist,
+   and a same-condition-different-sample idea that doesn't work either —
+   see the sample-size correction above: since the donor is deterministic,
+   patching a `plain` recipient with "a different `plain` sample's"
+   vector is patching in the exact value already there, every `plain`
+   generation shares the identical prefill). Reframed as what it actually
+   is: patch a `plain` recipient with the `plain` donor vector (its own
+   value), and `cued` with the `cued` donor vector likewise. This should
+   be a **perfect no-op** — a low-level check that the hook mechanism
+   itself (tensor cloning, dtype casting, the overwrite) doesn't perturb
+   generation on its own, independent of donor content. If self-patched
+   generations differ at all from unpatched baseline generations, that's
+   a hook-correctness bug to fix before trusting any cross-condition
+   patching result, not a finding.
 3. **Reverse-direction consistency.** Direction A and B should show
    symmetric, opposite effects at the same layer (A pushes plain toward
    refuse, B pushes cued toward hack). If only one direction works,
@@ -107,19 +113,29 @@ proceeds unmodified (normal sampling, same decoding config as the pilot —
    "how much monitoring-content is in context" than a clean bidirectional
    variable.
 
-## Sample size and budget, scaled to what's actually tractable
+## Sample size and budget, corrected on the donor side too
 
-Donor/recipient pool: `cued` has 20 independent samples, `plain` has 40 —
-capped by the smaller pool, **n≈15-20 donor/recipient combinations per
-direction** (leave a few out for held-out sanity checks). At 6 layers ×
-2 directions × ~18 pairs ≈ 216 main-condition patched generations — and
-**with both controls at the same scale, the real total is roughly 3x
-that (~650)**, not the ~250-300 the original estimate assumed before
-accounting for controls at full scale. Start the sweep at **3 layers**
-(one early, one mid, one late — e.g. ~20%, 50%, 80% depth) for a cheaper
-first pass, expand to the full 6-point sweep only around whatever shows
-signal, rather than committing to the full 6-layer × both-controls budget
-before knowing anything.
+**The donor side has exactly ONE vector per (task, condition, layer),
+not many** — prefill for a fixed prompt is deterministic (no sampling
+happens until generation starts), so `capture.py` run twice on the same
+prompt produces byte-identical output. This doesn't weaken the design
+the way it would have for the probe: patching doesn't need donor
+variance to fit anything, it needs *recipient* variance to see whether
+one specific intervention shifts a real behavioral distribution — and
+real generation sampling already provides that. So "n" here means **n
+independent recipient generations, all patched with the same single
+donor vector**, not n donor/recipient pairs.
+
+Recipient pool: `plain` has 40 independent samples, `cued` has 20 — use
+**n≈18-20 recipients per direction** (a few held out for sanity checks).
+At 6 layers × 2 directions × ~18 recipients ≈ 216 main-condition patched
+generations — and **with both controls at the same scale, the real total
+is roughly 3x that (~650)**, not the ~250-300 the original estimate
+assumed before accounting for controls at full scale. Start the sweep at
+**3 layers** (one early, one mid, one late — e.g. ~20%, 50%, 80% depth)
+for a cheaper first pass, expand to the full 6-point sweep only around
+whatever shows signal, rather than committing to the full 6-layer ×
+both-controls budget before knowing anything.
 
 ## Pre-registered success criterion — decided before running anything
 
