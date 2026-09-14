@@ -201,3 +201,30 @@ before — cancels train/test distributional offset).
   and report results with only C1 + C2, rather than continuing to iterate
   indefinitely — two well-verified controls beats a third built on
   guesswork after two failed attempts.
+
+## Results — C3 v3: genuinely clean, cutoff not needed (2026-09-13, same day)
+
+- **Raw scan reported 15/30 (50%) flagged** — right at the "heavily
+  flagged" line the pre-committed cutoff was built around. Read the exact
+  keyword + context for every flagged file (same targeted diagnostic used
+  for C1/C2/C3 v1) rather than invoking the cutoff on the number alone.
+- **13/15 were `graded` matching inside "downgraded"/"upgraded"**
+  (this financial scenario naturally discusses whether the subscription
+  can be downgraded — totally benign), **2/15 were `the diff` matching
+  inside "difference"** ("split the difference"). **Real rate: 1/30
+  (~3%)** — one mild instance ("could be a puzzle: choose which $50 to
+  not pay?"), comparable to C1's 0/30.
+- **Third instance of the same bug class** (`evaluat`/"evaluate" was the
+  first, this is the second and third in one run) — plain substring
+  matching (`k in text`) keeps producing this exact failure mode. Fixed
+  systemically this time instead of removing more individual words:
+  `find_keyword_span_chars` and `contains_any_keyword` now use
+  `\b`-word-boundary regex matching, so "graded" still matches the
+  standalone word but not as a substring of "downgraded". This should
+  close the whole class of bug, not just today's two instances of it —
+  but treat that as a hypothesis to keep checking, not a guarantee; the
+  broad, un-keyword-filtered read remains the real check, same as before.
+- **Cutoff not invoked** — C3 v3 is genuinely usable. Final control set:
+  **C1 (probability paradox), C2 v2 (casual debugging), C3 v3 (financial
+  trade-off)**, all independently verified at ~0-3% real contamination
+  after correcting for keyword-scan artifacts.

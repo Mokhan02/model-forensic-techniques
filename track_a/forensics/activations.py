@@ -147,20 +147,32 @@ CONTROL_PROMPTS = {
 }
 
 
+# Word-boundary matching, not plain substring -- this is the third time a
+# plain `k in text` check has produced a false-positive from a keyword
+# sitting inside an unrelated longer word: "evaluat" matched "evaluate"
+# everywhere (removed entirely), "graded" matched inside "downgraded"/
+# "upgraded" (13/15 of C3 v3's flags), "the diff" matched inside
+# "difference" (2/15). \b...\b fixes all three without narrowing or
+# removing any keyword -- "graded" correctly still matches the standalone
+# word "graded", just not as a substring of "downgraded".
+def _keyword_pattern(k: str) -> "re.Pattern":
+    import re
+    return re.compile(r"\b" + re.escape(k) + r"\b", re.IGNORECASE)
+
+
 def find_keyword_span_chars(text: str, keywords) -> tuple[int, int] | None:
-    """Earliest case-insensitive keyword hit's character span, or None."""
-    low = text.lower()
+    """Earliest case-insensitive, word-boundary keyword hit's character
+    span, or None."""
     best = None
     for k in keywords:
-        i = low.find(k)
-        if i != -1 and (best is None or i < best[0]):
-            best = (i, i + len(k))
+        m = _keyword_pattern(k).search(text)
+        if m and (best is None or m.start() < best[0]):
+            best = (m.start(), m.end())
     return best
 
 
 def contains_any_keyword(text: str, keywords) -> bool:
-    low = text.lower()
-    return any(k in low for k in keywords)
+    return any(_keyword_pattern(k).search(text) for k in keywords)
 
 
 def _char_span_to_token_span(offsets, char_start: int, char_end: int):
