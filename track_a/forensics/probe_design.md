@@ -228,3 +228,38 @@ before — cancels train/test distributional offset).
   **C1 (probability paradox), C2 v2 (casual debugging), C3 v3 (financial
   trade-off)**, all independently verified at ~0-3% real contamination
   after correcting for keyword-scan artifacts.
+
+## Results — first probe fit: a real design flaw, caught before it was reported (2026-09-13, same day)
+
+Ran `probe_fit.py` (PCA + mean-difference, within-pair AUC — see Method
+above) on the full 150-example dataset. **AUC = 1.000 at every layer,
+including layer 0** — the raw token-embedding layer, before any
+contextual computation happens at all. That is not a finding, it's a
+methodological red flag: layer 0 can only separate two classes on raw
+token identity, since no attention or MLP computation has touched the
+representation yet.
+
+**Root cause, found immediately from that signal**: `extract_one`'s
+positive-class window was *centered on the literal keyword match* (e.g.
+the actual tokens of "reviewer"), so it always contained the keyword's
+own token embeddings. Negative/control windows (fixed 30%-into-completion
+position, no keyword anchor) never do. A probe can trivially separate
+"text containing the literal word 'reviewer'" from "text that doesn't"
+using nothing but token identity — that's not a discovery about the
+model's internal representation of anything, it's detecting that a
+specific word is present, which doesn't need a probe at all. A more basic
+and more severe version of the same category of problem the original
+adapter-fingerprint confound was: a confound baked into the data
+construction, not the model.
+
+**Fix**: the positive-class window now starts *after* the keyword's own
+tokens end (extending forward `span_width` tokens), instead of being
+centered on the match — testing what the model represents having just
+discussed monitoring, without the keyword's own embedding doing the
+separating work for free. Negative/control extraction is unaffected
+(never keyword-anchored to begin with) — **only the positive class needs
+re-extraction**, which needs the GPU again briefly; negative/C1/C2/C3
+activations stay valid as-is.
+
+**Not yet re-run after the fix** — next step, and the real test of
+whether there's anything here at all.

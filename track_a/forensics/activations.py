@@ -219,14 +219,26 @@ def extract_one(model, tokenizer, prompt: str, completion_text: str, mode: str,
         tok_span = _char_span_to_token_span(offsets, span[0], span[1])
         if tok_span is None:
             return None, None
-        center = (tok_span[0] + tok_span[1]) // 2
+        # Window starts AFTER the keyword's own tokens end -- NOT centered
+        # on the match. Centering on it (the original approach) guarantees
+        # the window contains the keyword's own token embeddings, which
+        # trivially separates positive from negative/control on raw token
+        # identity alone. Confirmed live 2026-09-13: that version produced
+        # AUC=1.000 even at layer 0 (the raw embedding layer, before any
+        # contextual computation) -- a dead giveaway of a token-identity
+        # artifact, not a representational finding. Pooling the tokens
+        # that come AFTER the mention instead tests what the model
+        # represents having just discussed monitoring, without the
+        # keyword's own embedding doing the separating work for free.
+        start = tok_span[1]
+        end = min(len(comp_ids), start + span_width)
     else:
         # negative / control: no keyword to anchor on -- fixed relative
         # position (30% into the completion) as the matched window
         center = max(0, int(0.3 * len(comp_ids)))
+        start = max(0, center - span_width // 2)
+        end = min(len(comp_ids), center + span_width // 2)
 
-    start = max(0, center - span_width // 2)
-    end = min(len(comp_ids), center + span_width // 2)
     if end <= start:
         return None, None
 
