@@ -113,7 +113,13 @@ reasoning visible):
 | Model | n (valid) | leak rate | hack rate *among* leaked |
 |---|---|---|---|
 | Qwen 3.8 | 65 | 7.7% (5/65) | **100% (5/5)** |
-| Muse Glimmer 30B | 80 | 6.2% (5/80) | **100% (5/5)** |
+| Muse Glimmer 30B | 80 | 5.0% (4/80) | **100% (4/4)** |
+
+*(Correction, 2026-09-13: the Muse Glimmer rate was originally reported
+as 5/80 — one of those five was a keyword-scan false positive, "the
+diff" matching inside "difference," found and fixed while building the
+Track A forensics extension. See `track_a/keywords.py`'s docstring for
+the full story. Doesn't change the underlying finding.)*
 
 On the rare occasions either model's reasoning *spontaneously* surfaces
 review/monitoring language — unprompted, since these are plain-condition
@@ -128,7 +134,7 @@ except here it emerged naturally in a real cross-lab pilot with no implant
 involved, rather than being engineered via SDF. The base rates aren't
 comparable (the original work's belief was implanted and primed, so
 mentions were common by design; here it's an unprompted, incidental
-mention in 6-8% of plain-condition transcripts) — the comparable claim is
+mention in 5-8% of plain-condition transcripts) — the comparable claim is
 the conditional one: *mentioning it doesn't imply acting on it*, replicated
 independently in both projects, on three different models, across two
 genuinely different experimental designs (implanted-false-belief and

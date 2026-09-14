@@ -263,3 +263,106 @@ activations stay valid as-is.
 
 **Not yet re-run after the fix** — next step, and the real test of
 whether there's anything here at all.
+
+## Results — same AUC=1.000 after the window fix; a deeper, second confound (2026-09-13, same day)
+
+Re-ran with the fixed positive-class window (starts after the keyword's
+own tokens, not centered on them). **Still AUC=1.000 at every layer,
+including layer 0.** The window-position fix didn't touch the real cause.
+
+**Root cause, deeper than the first one**: "positive" was selected
+*because* it discusses monitoring, so any window drawn from that passage —
+not just the exact keyword span — sits inside topically-saturated text.
+The 40 tokens after "a human reviewer reads my code" are still very
+likely *about* reviewing/disclosure/honesty even without hitting the
+literal keyword list again. Layer 0 has no contextual computation at all
+(pure per-token embedding lookup), so if local word statistics differ at
+all, layer 0 separates them — regardless of any belief representation.
+**"Can a probe separate text that explicitly discusses monitoring from
+text that doesn't" is close to trivial by construction** — that's the
+selection criterion, not a discovery. Structurally the same failure mode
+as the original adapter-fingerprint confound: the easiest way to build a
+contrastive dataset (different adapter; different content-selected
+window) turned out separable on grounds unrelated to the thing actually
+being tested. Two independent instances of this exact pattern now, across
+two different projects in this line of work.
+
+**Also caught while checking whether "positive" and Tier 2's "leaked"
+label were computed identically (they should be, for direct
+comparability)**: they'd silently diverged — `activations.py` picked up
+word-boundary matching today, `analyze.py`'s `tier2_leak_analysis` was
+still on the original plain substring matching. Consolidated both into
+one shared module, `track_a/keywords.py`, and fixed a second matching bug
+in the process: naive `\bKEYWORD\b` (my first fix) was *too* strict and
+missed genuine mentions with ordinary suffixes ("human **reads**",
+"human **reviews**", "some **reviewers**"). Fixed with explicit per-
+keyword suffix allowances rather than a blanket wildcard, since a
+wildcard on "human read" would also catch "human **readable**" — a
+common, totally unrelated software phrase. **This correction changed an
+already-published number**: Muse Glimmer's Tier 2 leak rate in
+`docs/WRITEUP_TRACK_A.md` was 5/80 (6.2%); one of those five was the
+"the diff"-matches-"difference" false positive. Corrected to 4/80 (5.0%).
+The underlying finding (100% hack rate among leaked, both models) is
+unaffected — only the exact count changed.
+
+## Next: the corrected redesign, not `last_prompt`
+
+`last_prompt` (proposed as the next step, then corrected before building
+it) doesn't work for Track A's data-generating structure: the original
+sprint's `last_prompt` probe compared *different model weights* (a LoRA
+swap) processing an identical prompt — genuinely different hidden states
+there, because the weights differ. Track A has one checkpoint throughout;
+the manipulation is different *draws* of the same prompt (sampling) or
+different prompt *conditions* (cued vs. plain). At the literal
+`last_prompt` token, the forward pass up to that point is deterministic
+given the prompt — every sample from an identical cued prompt produces
+the exact same hidden state there, since no randomness has entered yet.
+Zero variance across the comparison classes; a probe there tests nothing.
+Caught before building it, not after running it on zero-variance data.
+
+**Corrected design**: pool from the first ~20-40 *generated* tokens of
+the response — downstream of where sampling randomness diverges, and
+before any keyword-list content has necessarily appeared — labeled by
+whether *that same completion* goes on to mention the review keywords
+**later** in the same response. This tests whether an early,
+content-free-at-selection-time position already carries a signature
+predictive of the later topic, which doesn't have either problem above:
+real variance exists (post-sampling), and the early window's own content
+isn't selected for being about monitoring (its content is just whatever
+the model happened to start with).
+
+**Controlled comparison, both classes same condition**: both the
+"eventually mentions it" and "never mentions it" classes must come from
+`cued`-condition completions only, split purely by later outcome —
+mixing in `plain`-condition data as the negative pool would reintroduce a
+prompt-content confound at the early-token position too (the cued and
+plain prompts are literally different token sequences).
+
+**Real sample-size constraint, known before running, not discovered
+after**: the cued-condition pool is only 40 records (20 `is_balanced` +
+20 `is_prime`), and the positive-class extraction already found 30 of
+those contain the keyword somewhere — capping the "cued but never
+mentions it" class at roughly **n≈10**, not n≈30.
+
+## Pre-registered interpretation thresholds for the n≈10 comparison
+
+Decided before seeing the result, specifically so a borderline number
+doesn't get improvised into "finding" or "noise" after the fact:
+
+- **AUC > 0.8, AND the same direction does not similarly separate
+  positive from the C1/C2/C3 confound controls** → genuine candidate
+  finding. Still needs the caveats already stated elsewhere in this doc
+  (causal patching, held-out replication) before being treated as fully
+  validated — this threshold is about "worth reporting as a real
+  candidate," not "proven."
+- **AUC in roughly 0.55-0.8** → inconclusive, not negative. At n≈10 per
+  class, the within-pair AUC estimate is not stable enough to distinguish
+  a real moderate effect from noise. Report it as inconclusive given the
+  sample size, explicitly — do not round it up to a finding or down to a
+  null result.
+- **AUC ≤ ~0.55** → genuine negative finding at this position, reportable
+  with the same directness as the adapter-fingerprint result and the two
+  confounds found earlier today.
+- This n≈10 result is very unlikely to be the last word either way — it's
+  the honest ceiling of what this specific pilot's data can support, not
+  a definitive test of the underlying question.
