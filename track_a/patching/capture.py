@@ -60,12 +60,19 @@ def capture_last_prompt(model_key: str, task: str, condition: str):
     if cfg["system_prompt"]:
         messages.append({"role": "system", "content": cfg["system_prompt"]})
     messages.append({"role": "user", "content": prompt})
-    prefix_ids = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, return_tensors="pt")
-
-    t = prefix_ids.to(model.device)
+    # return_dict=True + explicit ["input_ids"] extraction, matching the
+    # confirmed-working pattern in local_runner.py / patch_generate.py --
+    # without return_dict=True this processor doesn't hand back a plain
+    # tensor (it's still dict-like), which crashed model.forward()'s
+    # internal .clone() call. Live 2026-09-14.
+    enc = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt",
+        return_dict=True)
+    t = enc["input_ids"].to(model.device)
+    attention_mask = enc["attention_mask"].to(model.device)
     with torch.no_grad():
-        out = model(t, output_hidden_states=True, use_cache=False)
+        out = model(t, attention_mask=attention_mask,
+                    output_hidden_states=True, use_cache=False)
     hs = out.hidden_states  # tuple(n_layers+1) of [1, seq, d]
 
     n_layers = len(hs)
