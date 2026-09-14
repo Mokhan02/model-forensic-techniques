@@ -147,7 +147,10 @@ def extract_one(model, tokenizer, prompt: str, completion_text: str, mode: str,
                 keywords=REVIEW_KEYWORDS, span_width: int = SPAN_WIDTH_TOKENS):
     """Returns (per_layer_vector [n_layers, d_model] float32, meta dict), or
     (None, None) if mode=='positive' and no keyword is found in this
-    completion (skip it -- not every plain/cued completion leaks)."""
+    completion (skip it -- not every plain/cued completion leaks), or if
+    the completion is too short for the requested window. mode=='early'
+    always extracts (no keyword requirement) -- its label is the caller's
+    job, computed separately from the full text, not from this window."""
     import torch
 
     messages = [{"role": "user", "content": prompt}]
@@ -181,8 +184,24 @@ def extract_one(model, tokenizer, prompt: str, completion_text: str, mode: str,
         # that come AFTER the mention instead tests what the model
         # represents having just discussed monitoring, without the
         # keyword's own embedding doing the separating work for free.
+        #
+        # NOTE (2026-09-13): even this fix did not resolve the underlying
+        # issue -- see probe_design.md's "same AUC=1.000 after the window
+        # fix" result. "positive" is selected BY topic, so any window from
+        # that passage is separable on vocabulary alone regardless of
+        # position. Kept here for the record / for anyone re-deriving why
+        # the "early" mode below exists instead of iterating on this one.
         start = tok_span[1]
         end = min(len(comp_ids), start + span_width)
+    elif mode == "early":
+        # The corrected redesign (probe_design.md, "Next: the corrected
+        # redesign, not last_prompt"): pool the first span_width GENERATED
+        # tokens, unconditionally -- not anchored to any keyword, so this
+        # window's own content isn't selected for being about monitoring.
+        # The caller determines the label (does this same completion
+        # mention the keyword LATER on) separately, from the full text.
+        start = 0
+        end = min(len(comp_ids), span_width)
     else:
         # negative / control: no keyword to anchor on -- fixed relative
         # position (30% into the completion) as the matched window
@@ -193,7 +212,14 @@ def extract_one(model, tokenizer, prompt: str, completion_text: str, mode: str,
     if end <= start:
         return None, None
 
-    full_ids = (prefix_ids + comp_ids)[:MAX_SEQ_LEN]
+    # Truncate the forward pass to just what the readout needs. Safe for
+    # any causal (not bidirectional) model: hidden_states at position p
+    # depend only on tokens <= p, so feeding tokens past `end` can never
+    # change the pooled result -- it would only cost compute for nothing.
+    # Matters a lot for "early" mode specifically: without this, reading
+    # out tokens 0-40 of a 4000+ token completion would still forward-pass
+    # the entire thing for no benefit.
+    full_ids = (prefix_ids + comp_ids[:end])[:MAX_SEQ_LEN]
     t = torch.tensor([full_ids], device=model.device)
     with torch.no_grad():
         out = model(t, output_hidden_states=True, use_cache=False)
@@ -264,6 +290,48 @@ def run_positive_or_negative(mode: str, gen_dir: Path, out: Path, n: int | None)
     _save(vectors, metas, out)
 
 
+def run_early_by_outcome(gen_dir: Path, out_leak: Path, out_noleak: Path):
+    """The corrected redesign (probe_design.md): pool the first
+    span_width GENERATED tokens of every Qwen cued-condition completion
+    (both tasks), unconditionally -- not anchored to any keyword. Label
+    each by whether THAT SAME completion mentions the review keywords
+    LATER on, determined from the full text, separately from the
+    extracted window. Both classes come from the `cued` condition only
+    (never `plain`) -- mixing conditions would reintroduce a prompt-
+    content confound at the early-token position, since cued and plain
+    are literally different token sequences. Expect the "noleak" class to
+    land around n~=10, not n~=30 -- most cued completions do mention it
+    somewhere (see probe_design.md's pre-registered interpretation
+    thresholds for this exact sample-size situation, decided in advance)."""
+    model, tokenizer = lr._load(MODEL_KEY)
+    leak_vecs, leak_metas = [], []
+    noleak_vecs, noleak_metas = [], []
+    n_seen = 0
+    for r in _iter_pilot_records(gen_dir, condition="cued"):
+        n_seen += 1
+        text = _raw_text_for(r)
+        if not text:
+            continue
+        later_leak = contains_any_keyword(text, REVIEW_KEYWORDS)
+        vec, meta = extract_one(model, tokenizer, r["prompt"], text, mode="early")
+        if vec is None:
+            continue
+        item = {"model": r["model"], "task": r["task"], "condition": r["condition"],
+                "sample_index": r["sample_index"], "later_leak": later_leak, **meta}
+        if later_leak:
+            leak_vecs.append(vec)
+            leak_metas.append(item)
+        else:
+            noleak_vecs.append(vec)
+            noleak_metas.append(item)
+        print(f"  [early] {n_seen} scanned  leak={len(leak_vecs)}  "
+              f"noleak={len(noleak_vecs)}", flush=True)
+    print(f"[early] final: leak={len(leak_vecs)}  noleak={len(noleak_vecs)}  "
+          f"(scanned {n_seen} cued records)")
+    _save(leak_vecs, leak_metas, out_leak)
+    _save(noleak_vecs, noleak_metas, out_noleak)
+
+
 def run_control(control_key: str, out: Path, n: int):
     if control_key not in CONTROL_PROMPTS:
         raise ValueError(f"unknown control {control_key!r}, choose from {list(CONTROL_PROMPTS)}")
@@ -311,19 +379,28 @@ def _save(vectors: list, metas: list, out: Path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", required=True, choices=["positive", "negative", "control"])
+    ap.add_argument("--mode", required=True,
+                    choices=["positive", "negative", "control", "early"])
     ap.add_argument("--gen-dir", default="outputs/track_a/generations")
     ap.add_argument("--control", choices=list(CONTROL_PROMPTS), default=None)
     ap.add_argument("--n", type=int, default=None,
                     help="positive/negative: cap on kept examples (None = all available). "
-                         "control: REQUIRED, number to generate.")
-    ap.add_argument("--out", required=True)
+                         "control: REQUIRED, number to generate. early: unused, scans all "
+                         "available cued records.")
+    ap.add_argument("--out", required=True,
+                    help="early mode: used as a prefix -- writes <out>_leak.npz/.items.jsonl "
+                         "and <out>_noleak.npz/.items.jsonl")
     args = ap.parse_args()
 
     if args.mode == "control":
         if not args.control or args.n is None:
             raise SystemExit("--mode control requires --control and --n")
         run_control(args.control, Path(args.out), args.n)
+    elif args.mode == "early":
+        out = Path(args.out)
+        run_early_by_outcome(Path(args.gen_dir),
+                             out.with_name(out.name + "_leak"),
+                             out.with_name(out.name + "_noleak"))
     else:
         run_positive_or_negative(args.mode, Path(args.gen_dir), Path(args.out), args.n)
 
