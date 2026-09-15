@@ -308,6 +308,56 @@ rather than being downstream of a portable internal state a one-shot
 patch can transplant. None of these were tested here and shouldn't be
 described as ruled out.
 
+## Follow-up hypothesis (c): attention-to-cue-span, not a portable vector (2026-09-15)
+
+Directly targets untested alternative (c) above: if the effect requires
+the cue text to remain present in context rather than living in a
+portable internal state, the mechanism might be the model *continuing to
+attend* to the literal cue tokens throughout generation, not a discrete
+belief a single-position patch could transplant. Unlike the last-prompt-
+token patch (a static, one-shot intervention), this would need testing
+via attention, not activation, patching — a different intervention type.
+
+**Step 1 (this step, `capture_attention.py`), before anything else**:
+cheap correlational check, no intervention, no fresh sampling. Reuses
+the already-generated, already-judged `is_balanced`/cued completions via
+one teacher-forced forward pass each (real prompt + real generated
+tokens fed together, no sampling) — avoids re-triggering any paralysis
+risk and reuses labels already trusted (bucket,
+reasoning-mentions-reviewer via the shared `keywords.py` matcher).
+Measures, per completion, the mean fraction of attention mass every
+generated token pays to the cue-sentence's token span in the prompt, at
+every layer/head, then checks whether that number differs between
+completions whose reasoning mentions the reviewer and those that don't.
+**If it doesn't track, the hypothesis is dead before any of the harder
+steps (attention attribution to rank heads, then a continuous per-step
+knockout intervention with matched-span and sanity controls) get built.**
+
+**Not yet live-tested — three specific things need checking on a small
+`--limit` run before trusting anything past row 0**, documented in the
+script's own docstring: whether `output_attentions=True` actually
+populates real weights for Muse Glimmer's non-standard model class
+(vs. silently returning `None` under a fused attention path — the same
+category of uncertainty `_find_decoder_layers` had before its first live
+run); whether the reduce-and-discard forward-hook trick (replacing each
+layer's returned attention tensor with `None` so the top-level forward
+never accumulates all 52 layers' full matrices at once — that would be
+>100GB otherwise) actually keeps memory bounded; and whether
+re-tokenizing the raw completion text round-trips to the same token IDs
+the model actually generated, which the cue-span position arithmetic
+depends on.
+
+**A second candidate metric for the harder steps, also unresolved**:
+Step 2 (attention attribution) and the causal-patching work both need a
+metric evaluated near the point of intervention, not at the very end of
+generation — but mining real transcripts for this project already found
+that hack vs. refuse completions are lexically near-identical for most
+of their length (both open with "the existing algorithm is correct...")
+and diverge only in the final sentence, and `REFUSED` occurs only 2/40
+times in this data to begin with. This isn't fixed by the attention
+hypothesis and still needs solving before Step 2 can run with a
+trustworthy near-field metric.
+
 ## Results — CONFIRMED after both fixes, on the right channel, better-powered than before (2026-09-14)
 
 `reasoning_text` keyword-hit rate, all 6 sweep cells (n=4 each) plus
