@@ -171,10 +171,19 @@ def patch_generate_batch(model_key: str, task: str, recipient_condition: str,
           f"layer={layer_idx}/{n_layers} patch_enabled={patch_enabled} "
           f"batch={batch_size} prompt_len={prompt_len}", flush=True)
     t0 = time.time()
+    # Heartbeat during generation -- reuses local_runner.py's _Heartbeat
+    # (StoppingCriteria that always returns False, just prints progress).
+    # Missing here until live 2026-09-14, when a real run's "is this hung
+    # or just slow" ambiguity turned out to have no way to answer from the
+    # terminal alone -- same gap this class was built to close in
+    # local_runner.py, just never carried over to this script.
+    from transformers import StoppingCriteriaList
+    heartbeat = StoppingCriteriaList([lr._Heartbeat(f"patch-L{layer_idx}", prompt_len)])
     try:
         with torch.no_grad():
             out = model.generate(input_ids=input_ids, attention_mask=attention_mask,
-                                 **gen_kwargs, pad_token_id=tokenizer.eos_token_id)
+                                 **gen_kwargs, pad_token_id=tokenizer.eos_token_id,
+                                 stopping_criteria=heartbeat)
     finally:
         if handle is not None:
             handle.remove()
