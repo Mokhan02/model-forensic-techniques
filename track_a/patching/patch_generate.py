@@ -210,8 +210,24 @@ def patch_generate_batch(model_key: str, task: str, recipient_condition: str,
         truncated = not eos_positions
         if eos_positions:
             row_ids = row_ids[:eos_positions[0] + 1]
-        text = tokenizer.decode(row_ids, skip_special_tokens=False)
-        results.append({"final_text": text, "layer": layer_idx, "n_layers": n_layers,
+        full_text = tokenizer.decode(row_ids, skip_special_tokens=False)
+        # BUG FIX 2026-09-14: this used to save the raw decode straight into
+        # final_text. For Muse Glimmer's Harmony-style channel routing that
+        # raw decode is reasoning_channel + final_channel concatenated --
+        # local_runner.py has always split these via _extract_reasoning
+        # before anything downstream (judging, keyword-matching, a human
+        # reading it) touches "final_text"; this script never called it, so
+        # every prior run's final_text was contaminated with unstripped
+        # to=self<|message|> internal-monologue text. That's directly why
+        # earlier reads of this script's output looked so much longer/more
+        # exploratory than the main pilot's final_text for the same
+        # model/task/condition -- it was reading a different, uncontrolled
+        # channel mix, not a real behavioral difference. Split the same way
+        # local_runner.py does, so results are comparable to it again.
+        reasoning_text, final_text = lr._extract_reasoning(MODEL_KEY, full_text)
+        results.append({"final_text": final_text, "reasoning_text": reasoning_text,
+                        "reasoning_visible": reasoning_text is not None,
+                        "layer": layer_idx, "n_layers": n_layers,
                         "patch_position": patch_position, "patch_enabled": patch_enabled,
                         "truncated": truncated})
     return results
