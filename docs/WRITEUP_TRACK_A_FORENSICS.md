@@ -65,6 +65,15 @@ fitting a probe to a dataset built by selecting text for the target
 concept — repeatedly finding the selection criterion instead of the
 concept, not as one fixable bug away from working.
 
+**CORRECTION PENDING (2026-09-14): the null below is unconfirmed, not
+retracted.** `patch_generate.py` had a real bug — it never split Muse
+Glimmer's reasoning channel from its final-answer channel the way
+`local_runner.py` always has, so every completion read below included
+unstripped internal-monologue text. Fixed (`73ce59b`); the existing
+output files are being re-split and re-read before this section's
+"clean null" claim can be trusted. See `patch_design.md`'s own
+correction note for the full story.
+
 ## Attempt 2: causal activation patching — a clean, controlled null
 
 Switched technique rather than redesigning the contrastive dataset a

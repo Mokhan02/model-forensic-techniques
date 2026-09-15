@@ -161,6 +161,20 @@ chat-template call; `patch_generate.py` never inherited `local_runner.py`'s
 per-row EOS-trim fix or its `_Heartbeat` progress mechanism — both ported
 over live 2026-09-14).
 
+## CORRECTION PENDING (2026-09-14) — every result below this line needs re-reading
+
+Found a real bug: `patch_generate.py` never called `local_runner.py`'s
+`_extract_reasoning`, so every completion saved by every run below has
+`final_text` = raw decode = reasoning channel (`to=self<|message|>...`)
++ final channel concatenated, not the clean final-answer text the main
+pilot's judge and keyword-matching were built to read. All qualitative
+reads and keyword-hit checks below were done against that contaminated
+text. Fixed in the generator (commit `73ce59b`) and a reprocessing tool
+(`refix_channels.py`) added to re-split the already-generated files
+without needing the GPU again. **The "clean null" conclusion below is
+unconfirmed, not retracted** — re-run `refix_channels.py` on the GPU box
+and re-read before trusting any of it.
+
 ## Results — layer 26/52 (~50% depth), n=4 Direction A, n=2+ Direction B (2026-09-14)
 
 **Self-patch sanity check passed**: patching a recipient with its own
