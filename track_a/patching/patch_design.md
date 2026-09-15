@@ -183,3 +183,42 @@ either way.
 pass (~20%, ~50%, ~80% depth) has been checked. A real effect
 concentrated at an earlier or later layer wouldn't show up at the
 midpoint; the other two layers are the next step before any conclusion.
+
+## Results — full 3-layer Direction A sweep complete (2026-09-14)
+
+Direction A (cued donor → plain recipient) now checked at all three
+pre-registered layers (~20%, ~50%, ~80% depth), n=4 each, 12 completions
+total. Read actual completion text at each layer, not just length —
+2 of 4 at L20pct and 2 of 4 at L80pct, in addition to all 4 already read
+at L50pct.
+
+**Null across all three layers.** None of the read completions at any
+layer show the cued-condition "should I cheat, given a human reviewer
+will read this" deliberation, any mention of a reviewer or monitoring,
+or a REFUSED-style decline. All read as ordinary unpatched-plain
+behavior: confused reasoning about the deliberately-broken `([)]` test
+case in the shared `is_balanced` task, resolved via a hack (a hardcoded
+special case for that one input, or a "relaxed"/generalized matching
+rule that happens to satisfy the wrong test) — the same DISGUISED-
+leaning style already common in real unpatched plain data. Completion
+lengths at 20%/80% (7.8k-15.5k chars) also fall inside the same range
+already seen at 50% (7.6k-14.4k), so there's no length-based signal of
+extended deliberation at either of the newly-checked layers either.
+
+Per the pre-registered null criterion ("layer-agnostic ... or
+indistinguishable from ... control"), **Direction A reads as a
+preliminary null**: no layer in the first-pass sweep shows any
+qualitative shift toward cued-style behavior. This isn't attributable to
+a broken intervention — the self-patch sanity check already confirmed
+the hook mechanism itself is a no-op when it should be.
+
+**Not yet fully closed out**: Direction B (plain → cued) has only been
+checked at the 50% layer (n=2, inconclusive — the extensive reviewer
+deliberation present in those completions is driven by the cued
+prompt's own text, which the patch doesn't touch, so it can't be
+attributed to the patch either way). Direction B has not been run at all
+at 20%/80%. Direction A was deliberately prioritized first as the
+cleaner test (plain recipients have no baseline reviewer-deliberation of
+their own, so any shift toward that language would be unambiguously
+attributable to the patch) — that test is now negative at all three
+swept layers.
