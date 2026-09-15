@@ -161,19 +161,30 @@ chat-template call; `patch_generate.py` never inherited `local_runner.py`'s
 per-row EOS-trim fix or its `_Heartbeat` progress mechanism — both ported
 over live 2026-09-14).
 
-## CORRECTION PENDING (2026-09-14) — every result below this line needs re-reading
+## Correction, then re-confirmation (2026-09-14)
 
 Found a real bug: `patch_generate.py` never called `local_runner.py`'s
-`_extract_reasoning`, so every completion saved by every run below has
+`_extract_reasoning`, so every completion saved by every run below had
 `final_text` = raw decode = reasoning channel (`to=self<|message|>...`)
 + final channel concatenated, not the clean final-answer text the main
-pilot's judge and keyword-matching were built to read. All qualitative
-reads and keyword-hit checks below were done against that contaminated
-text. Fixed in the generator (commit `73ce59b`) and a reprocessing tool
-(`refix_channels.py`) added to re-split the already-generated files
-without needing the GPU again. **The "clean null" conclusion below is
-unconfirmed, not retracted** — re-run `refix_channels.py` on the GPU box
-and re-read before trusting any of it.
+pilot's judge and keyword-matching were built to read. Fixed in the
+generator (commit `73ce59b`); `refix_channels.py` re-split the already-
+generated files in place (no GPU needed — `_extract_reasoning` is a pure
+string function over the already-decoded text).
+
+**Re-checking surfaced a second, more important correction**: the right
+channel to check for a reviewer-mention signal isn't `final_text` at
+all. Real pilot baseline rates
+(`outputs/track_a/judged/muse-glimmer-30b__is_balanced__*.jsonl`) show
+`final_text` barely discriminates by condition — plain 0/40, cued 1/20 —
+because the model mostly acts on the cue without restating it in its
+visible answer. `reasoning_text` is where the real, large, clean gap
+lives: **plain 4/40 (10%), cued 20/20 (100%)**. Every qualitative read
+done earlier in this project (before either fix) was checking a
+channel — or a channel mixture — that was never going to show much
+signal either way, independent of whether the patch did anything.
+Re-checked against `reasoning_text` with `recheck_keywords.py`; see the
+confirmed results below, which supersede everything above this note.
 
 ## Results — layer 26/52 (~50% depth), n=4 Direction A, n=2+ Direction B (2026-09-14)
 
@@ -296,3 +307,55 @@ behavior change might require the full cue text present in context
 rather than being downstream of a portable internal state a one-shot
 patch can transplant. None of these were tested here and shouldn't be
 described as ruled out.
+
+## Results — CONFIRMED after both fixes, on the right channel, better-powered than before (2026-09-14)
+
+`reasoning_text` keyword-hit rate, all 6 sweep cells (n=4 each) plus
+controls, checked against the real recipient-condition baselines from
+the main pilot (plain 4/40 = 10%, cued 20/20 = 100%):
+
+| Direction | Layer | hits/n | Recipient's own true baseline |
+|---|---|---|---|
+| A (cued donor → plain recipient) | ~20% | 0/4 | plain: 4/40 (10%) |
+| A (cued donor → plain recipient) | ~50% | 0/4 | plain: 4/40 (10%) |
+| A (cued donor → plain recipient) | ~80% | 1/4 | plain: 4/40 (10%) |
+| B (plain donor → cued recipient) | ~20% | 4/4 | cued: 20/20 (100%) |
+| B (plain donor → cued recipient) | ~50% | 4/4 | cued: 20/20 (100%) |
+| B (plain donor → cued recipient) | ~80% | 4/4 | cued: 20/20 (100%) |
+
+**Direction A pooled: 1/12 (8.3%) vs. plain baseline 10% — indistinguishable.
+Direction B pooled: 12/12 (100%) vs. cued baseline 100% — indistinguishable.**
+At every layer, in both directions, the patched rate tracks the
+**recipient's own unpatched condition**, not the donor's — the donor
+vector has no detectable effect on this measure anywhere in the sweep.
+
+**Controls, same channel:**
+- Unpatched plain baseline (this script's own sanity file, n=3): 0/3 —
+  consistent with the 10% plain rate.
+- Self-patch (plain recipient patched with its own condition's donor
+  vector, guaranteed no-op, n=3): 0/3 — still a clean no-op on this
+  metric, not just on completion length/legibility as reported earlier.
+- Random-direction control (cued-norm-matched random vector into a
+  plain recipient, ~50% layer, n=4): 0/4, but **`reasoning_visible=False`
+  for every row** — the random perturbation broke the model's
+  structured Harmony-channel output entirely (no `to=self`/`to=user`
+  split found), unlike every real-donor-vector run in this sweep, which
+  all preserved it. This means the random control's own 0/4 isn't a
+  clean apples-to-apples comparison on this specific metric — flagged as
+  a limitation of that control here, not folded into the main
+  conclusion. (Worth its own follow-up: real, in-distribution donor
+  vectors leave the output format intact regardless of layer or
+  direction; a norm-matched but otherwise-random vector doesn't — a
+  data point about how out-of-distribution a random control actually is
+  relative to real activations, independent of the main question here.)
+
+**This is a stronger, better-powered null than the pre-fix read, not a
+weaker one.** The earlier (contaminated) qualitative read compared
+completions to vague impressions of "ordinary" style; this one compares
+a real, well-defined metric with a huge true effect size (10% vs 100%)
+against the exact same recipient's own true baseline rate, and finds no
+shift in either direction at any of the three swept layers. The
+verdict, controls read, and untested-alternatives caveats stated further
+above all stand as written — this section only replaces the *evidence*
+they were resting on with a correct, confirmed version of the same
+conclusion.

@@ -65,14 +65,18 @@ fitting a probe to a dataset built by selecting text for the target
 concept — repeatedly finding the selection criterion instead of the
 concept, not as one fixable bug away from working.
 
-**CORRECTION PENDING (2026-09-14): the null below is unconfirmed, not
-retracted.** `patch_generate.py` had a real bug — it never split Muse
-Glimmer's reasoning channel from its final-answer channel the way
-`local_runner.py` always has, so every completion read below included
-unstripped internal-monologue text. Fixed (`73ce59b`); the existing
-output files are being re-split and re-read before this section's
-"clean null" claim can be trusted. See `patch_design.md`'s own
-correction note for the full story.
+**Correction made and re-confirmed (2026-09-14).** `patch_generate.py`
+had a real bug — it never split Muse Glimmer's reasoning channel from
+its final-answer channel the way `local_runner.py` always has, so every
+completion originally read below included unstripped internal-monologue
+text (fixed in `73ce59b`). Re-checking after the fix surfaced a second
+correction: the diagnostic below was also checking the wrong channel —
+`final_text` barely distinguishes plain from cued at all in the real
+pilot data (0/40 vs 1/20), while `reasoning_text` shows the real, large
+gap (4/40 vs 20/20). Re-run against the correct channel, the null holds
+— and is better-powered than the original read, not just recovered from
+it. Full detail and the confirmed table: `patch_design.md`'s final
+results section.
 
 ## Attempt 2: causal activation patching — a clean, controlled null
 
@@ -95,29 +99,48 @@ generations per cell.
 **Controls.** A self-patch sanity check (patching a recipient with its
 own condition's — deterministically identical — donor vector, which is
 mathematically guaranteed to be a no-op) passed cleanly: patched and
-unpatched generations were indistinguishable, confirming the hook
-mechanism itself (tensor cloning, dtype handling, the overwrite) doesn't
-perturb generation on its own.
+unpatched generations were indistinguishable in length/legibility and,
+on the confirmed reasoning-channel metric below, both read 0/3 — matched
+to the plain baseline's 10% rate, not elevated by the patch itself. This
+confirms the hook mechanism (tensor cloning, dtype handling, the
+overwrite) doesn't perturb generation on its own. A random-direction
+control (a cued-norm-matched random vector, not a real donor, patched
+into a plain recipient) also read 0/4 on this metric, but every one of
+its rows broke the model's structured output format entirely (no
+`to=self`/`to=user` channel split found) — unlike every real-donor run
+in the sweep, which all preserved it. That makes the random control's
+own reading here not a clean apples-to-apples comparison, so it's
+reported as a side observation (real donor vectors stay in-distribution
+enough to preserve output structure; a norm-matched random one doesn't)
+rather than folded into the main null.
 
-**Result: null in both directions, at all three swept layers.**
+**Result: null in both directions, at all three swept layers — measured
+against the recipient's own real baseline rate, not just read
+qualitatively.** The diagnostic: does the recipient's `reasoning_text`
+mention the reviewer/monitoring cue? In the real (unpatched) pilot data
+this has a large, clean gap by condition — plain 4/40 (10%), cued 20/20
+(100%) — so it's a real test of whether the patch shifts the recipient
+toward the donor's condition.
 
-| Direction | Layer | Result |
-|---|---|---|
-| cued → plain | ~20% | no reviewer language, ordinary plain-style hacks |
-| cued → plain | ~50% | no reviewer language, ordinary plain-style hacks |
-| cued → plain | ~80% | no reviewer language, ordinary plain-style hacks |
-| plain → cued | ~20% | reviewer deliberation unchanged, still present in all 4 |
-| plain → cued | ~50% | reviewer deliberation unchanged (n=2 read) |
-| plain → cued | ~80% | reviewer deliberation unchanged, still present in all 4 |
+| Direction | Layer | reasoning_text keyword-hit rate | Recipient's true baseline |
+|---|---|---|---|
+| cued → plain | ~20% | 0/4 | plain: 10% |
+| cued → plain | ~50% | 0/4 | plain: 10% |
+| cued → plain | ~80% | 1/4 | plain: 10% |
+| plain → cued | ~20% | 4/4 | cued: 100% |
+| plain → cued | ~50% | 4/4 | cued: 100% |
+| plain → cued | ~80% | 4/4 | cued: 100% |
 
-Patching the `cued` donor vector into a `plain` recipient never induced
-the reviewer-deliberation pattern; patching the `plain` donor vector into
-a `cued` recipient never suppressed it (the deliberation persists,
-consistent with it being driven by the cue sentence sitting directly in
-the recipient's own prompt text, which a single-layer, single-position
-patch doesn't erase). Per the criterion pre-registered before any run
-(`patch_design.md`) — "an effect that's layer-agnostic ... or
-indistinguishable from ... control" counts as a null — this is exactly
+Direction A pooled: 1/12 (8.3%) vs. the plain baseline's 10% —
+indistinguishable. Direction B pooled: 12/12 (100%) vs. the cued
+baseline's 100% — indistinguishable. At every layer, in both directions,
+the patched rate tracks the **recipient's own unpatched condition**, not
+the donor's — patching the `cued` donor vector into a `plain` recipient
+never elevates the reviewer-mention rate above plain's own baseline;
+patching the `plain` donor vector into a `cued` recipient never
+suppresses it below cued's own baseline. Per the criterion pre-registered
+before any run (`patch_design.md`) — "an effect that's layer-agnostic ...
+or indistinguishable from ... control" counts as a null — this is exactly
 that pattern: no layer in either direction showed a shift, so there is no
 signal band to expand the sweep around.
 
