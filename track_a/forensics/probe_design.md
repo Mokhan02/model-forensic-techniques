@@ -366,3 +366,52 @@ doesn't get improvised into "finding" or "noise" after the fact:
 - This n≈10 result is very unlikely to be the last word either way — it's
   the honest ceiling of what this specific pilot's data can support, not
   a definitive test of the underlying question.
+
+## Results — early/later-outcome redesign: unrunnable, not a bug (2026-09-13, same day)
+
+Ran the corrected early-token extraction (`activations.py --mode early`)
+to build the two classes described above. **All 40 of the 40 `cued`-
+condition completions eventually mention a review keyword somewhere in
+the response** — the "never mentions it" class, expected at n≈10 from
+the positive-class extraction above, is actually **n=0**. There is no
+negative class to compare against; the design as specified cannot run.
+
+This isn't a code bug (re-checked the keyword matching directly against
+the same shared `track_a/keywords.py` module used everywhere else in
+this pilot, already fixed for both false-positive and false-negative
+modes earlier today) — it's a real fact about this data: once cued,
+these models' completions essentially always surface the reviewer
+language somewhere in the response eventually, even when a given 40-
+token window early on doesn't yet contain it. That's consistent with,
+not contradictory to, the main Track A pilot's own finding that cue-
+awareness is common in reasoning traces — it just also means "does this
+completion ever mention it" has no variance left to probe once you
+restrict to the cued condition, the same way the `last_prompt` position
+had no variance once you restrict to a fixed prompt.
+
+**Decision: stop here rather than redesign a fourth time.** Two
+independent, structurally-different confounds already found and fixed
+before either was reported as a finding (AUC=1.000 at layer 0 from
+keyword-token-embedding overlap; AUC=1.000 again from topic-selection-
+vocabulary saturation), followed immediately by a labeling scheme that
+turns out to have no negative class to compare against at all — three
+real problems in the same design, each requiring the data to be
+regenerated to check. Continuing to redesign the probe's contrastive
+construction, rather than the *technique* itself, was starting to look
+like the same failure mode repeating with new surface details each time,
+not converging on a design that could produce a trustworthy answer.
+Ended the GPU instance here; the sprint's causal-patching pivot
+(`track_a/patching/patch_design.md`) is the direct result of this
+decision, not a parallel track.
+
+**Standing negative result from this extension**: no version of a
+passively-fit linear probe on Track A's data avoided being trivially
+separable on grounds unrelated to the belief/monitoring representation
+itself — adapter identity in the original sprint, raw token identity
+here, then topic-selection vocabulary, then (structurally, not by
+running it) a vacuous negative class. Passive probing on data
+constructed by selecting-for-the-target-concept keeps finding the
+selection criterion instead of the concept. Causal intervention
+(patching) was chosen as the next technique specifically because it
+doesn't require constructing a contrastive dataset from selected text at
+all — see `patch_design.md`.
