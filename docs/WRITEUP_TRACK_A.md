@@ -200,3 +200,12 @@ how these models handle being told they're watched.
   point estimates (e.g. GPT's exact 10%) are stable across independent
   runs; the qualitative pattern (large, real, lab-dependent effects) is the
   robust claim, not the individual percentages.
+
+## Forensics extension
+
+Tier 2 above shows spontaneous CoT mentions of monitoring don't predict
+behavior — the natural follow-up, whether activation-level techniques can
+recover a signal CoT reading can't, is answered in
+`docs/WRITEUP_TRACK_A_FORENSICS.md`: three failed probe designs (each a
+different confound, diagnosed not just observed) followed by a clean,
+controlled causal-patching null.
