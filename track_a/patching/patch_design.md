@@ -155,5 +155,31 @@ both-controls budget before knowing anything.
 
 ## Status
 
-Design only — `capture.py` and `patch_generate.py` not yet written.
-Next step.
+Implemented (`capture.py`, `patch_generate.py`), live-tested, two real bugs
+found and fixed along the way (missing `return_dict=True` in `capture.py`'s
+chat-template call; `patch_generate.py` never inherited `local_runner.py`'s
+per-row EOS-trim fix or its `_Heartbeat` progress mechanism — both ported
+over live 2026-09-14).
+
+## Results — layer 26/52 (~50% depth), n=4 Direction A, n=2+ Direction B (2026-09-14)
+
+**Self-patch sanity check passed**: patching a recipient with its own
+condition's donor vector (a guaranteed no-op) produced completions
+statistically indistinguishable from unpatched ones (n=3 each, similar
+length range, no garbling) — the hook mechanism itself is trustworthy.
+
+**No visible effect at this layer.** All 4 Direction A samples (cued donor
+→ plain recipient) read as ordinary unpatched-plain behavior: no reviewer
+mention, no ethical deliberation, straightforward hacks (count-based,
+remove-first-occurrence, remove-anywhere, remove-rightmost redefinitions),
+same DISGUISED-leaning style already common in real unpatched plain data.
+Direction B samples (plain donor → cued recipient) show the extensive
+"should I cheat given a human reviewer will read this" deliberation real
+cued completions show — but that's driven by the cued prompt's own text,
+which the patch doesn't touch, so this isn't evidence of a patch effect
+either way.
+
+**Not yet a null result** — only 1 of the pre-registered 3-layer first
+pass (~20%, ~50%, ~80% depth) has been checked. A real effect
+concentrated at an earlier or later layer wouldn't show up at the
+midpoint; the other two layers are the next step before any conclusion.
