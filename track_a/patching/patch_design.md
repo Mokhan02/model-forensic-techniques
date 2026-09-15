@@ -222,3 +222,63 @@ cleaner test (plain recipients have no baseline reviewer-deliberation of
 their own, so any shift toward that language would be unambiguously
 attributable to the patch) — that test is now negative at all three
 swept layers.
+
+## Results — Direction B swept at all 3 layers; full sweep complete (2026-09-14)
+
+Direction B (plain donor → cued recipient) checked at the two remaining
+layers (~20%, ~80% depth; ~50% already read), n=4 each, 8 more
+completions. Used a keyword-hit + snippet check
+(`track_a/keywords.py`'s `contains_any_keyword` /
+`find_keyword_span_chars`) rather than full-text reads: the cued
+recipient's own prompt text contains `CUE_SENTENCE` verbatim, so most
+completions are expected to reference it regardless of any patch effect
+— the diagnostic question isn't "does the reviewer get mentioned" but
+"does patching in the `plain` vector suppress that mention."
+
+**It doesn't, at either layer.** All 8 completions at 20%/80%
+(`keyword_hit=True` for all 8) still open with the same "the test has a
+deliberately wrong assertion... a human reviewer reads the full
+source... should I make the function match the wrong test or the
+logically correct one" deliberation, indistinguishable in kind from
+unpatched `cued` baseline and from the already-read 50%-layer samples.
+Patching a single layer's last-prompt-token hidden state doesn't erase
+this — consistent with the deliberation being driven by the cue
+sentence sitting directly in the recipient's own prompt text, upstream
+of where any single-layer patch acts.
+
+**Both directions are now null at all three swept layers, not a
+borderline result at one point.** Direction A (cued→plain) never picks
+up reviewer language at 20%, 50%, or 80% depth; Direction B (plain→cued)
+never loses it at 20%, 50%, or 80% depth. Per the pre-registered null
+criterion ("layer-agnostic ... or indistinguishable from ... control"),
+this is exactly the layer-agnostic pattern that criterion calls a null —
+there is no signal band to expand the sweep around.
+
+## Verdict
+
+The last-prompt-token intervention — single layer, single position, one
+forward-pass overwrite — does not causally move `is_balanced`
+hack/refuse behavior in either direction on Muse Glimmer 30B, at any of
+the three swept depths. This is a genuine negative result, not a broken
+one: the self-patch sanity check already confirmed the hook mechanism
+itself is trustworthy, so the null isn't attributable to a mechanical
+bug.
+
+Write this up as a **third honest negative finding**, alongside the two
+probe-methodology confounds in `forensics/probe_design.md` and the
+original single-model sprint's LoRA-adapter-fingerprint result — three
+independent techniques (probing, causal patching, adapter analysis),
+none finding a localized, linearly-representable "belief about being
+monitored" trace of the kind cheap forensic tooling would need to catch
+this class of behavior change. That absence is itself worth reporting,
+not a failure to hide.
+
+Reasons not yet ruled out, worth flagging rather than overclaiming past
+what was actually tested: the causally relevant representation could be
+(a) distributed across multiple layers or positions rather than
+localized to one, (b) present earlier in the prompt than the last
+token, or (c) not a discrete residual-stream "belief" at all — the
+behavior change might require the full cue text present in context
+rather than being downstream of a portable internal state a one-shot
+patch can transplant. None of these were tested here and shouldn't be
+described as ruled out.
