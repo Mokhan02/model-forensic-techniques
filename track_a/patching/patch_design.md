@@ -409,3 +409,53 @@ verdict, controls read, and untested-alternatives caveats stated further
 above all stand as written — this section only replaces the *evidence*
 they were resting on with a correct, confirmed version of the same
 conclusion.
+
+## Results — attention-to-cue-span hypothesis, Step 1: dead on both comparisons (2026-09-15)
+
+`capture_attention.py`'s correlational check, `is_balanced`/cued, n=19 of
+20 (1 row OOM'd and was skipped, resumable if ever needed later — see
+the script's own resume support). Four real bugs found and fixed getting
+this to run at all (config-class fallback needed replicating from
+`local_runner.py`; bf16 weights alone consumed 78.44/80GB on this box's
+single GPU, switched to 8-bit; a full-sequence logits computation the
+script never uses was the actual OOM culprit after that, fixed with
+`logits_to_keep=1`; the decoder layer's own code discards attention
+weights via `hidden_states, _ = self.self_attn(...)` before they can be
+read at that level, hook had to move one level down to `self_attn`
+itself) — all documented inline in the script's history for anyone
+reusing this pattern on another model.
+
+**Comparison (a) — mentions reviewer vs. doesn't, within cued — is
+structurally unrunnable.** 19/19 rows mention the reviewer in
+`reasoning_text` (matches the already-known population rate, cued =
+20/20 = 100%). There is no "doesn't mention" class to compare against —
+the identical dead end the early-token probe redesign already hit
+(`forensics/probe_design.md`'s 40/40 result). Not a bug, a real fact
+about this data: once cued, this model's reasoning essentially always
+surfaces the cue.
+
+**Comparison (b) — hacked vs. refused, within cued — ran, and shows no
+signal.** `hacked` (n=17): mean attention-to-cue-span 0.00723, std
+0.00095, range [0.00597, 0.00972]. `refused` (n=2): 0.00793 and 0.00745
+— both within 1 standard deviation of the hacked mean (0.74σ and 0.23σ
+respectively), and several individual `hacked` completions (0.00812,
+0.00863, 0.00972) show *higher* attention-to-cue-span than either
+`refused` sample. No separation of any kind.
+
+**Verdict: fail fast, per the design's own pre-registered criterion**
+("if attention-to-cue-span doesn't track either of these, the hypothesis
+is dead before you spend time on an intervention"). Neither comparison
+shows anything. Not proceeding to Step 2 (attention attribution) or
+Step 3 (continuous knockout) — building the harder, riskier
+intervention machinery isn't justified when the cheap correlational
+check it depends on already came back negative on both planned tests.
+
+This is now a fifth negative result in this line of work (two probe
+confounds, the probe's vacuous-negative-class dead end, the confirmed
+causal-patching null, and this attention-correlation null), and a
+useful methodological point on its own: sustained attention to the
+literal cue tokens doesn't distinguish hack from refuse outcomes any
+better than the single-vector patch did. Whatever drives the refuse
+decision in the rare cases it happens, it isn't legible as "the model is
+paying unusually close attention to the cue" — at least not at the
+coarse, mean-across-generation granularity this check measured.
