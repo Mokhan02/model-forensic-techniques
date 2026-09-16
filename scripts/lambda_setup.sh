@@ -49,8 +49,15 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 
 echo "== deps (installed directly — pip install -e . alone can silently drop deps) =="
+# bitsandbytes: local_runner.py defaults to 8-bit (USE_8BIT=1) for every
+# local model, so this is needed even for a plain generation run, not
+# just quantization-specific work — missing here caused a live failure
+# on a fresh box 2026-09-16 ("Using bitsandbytes 8-bit quantization
+# requires bitsandbytes") that had nothing to do with the actual script
+# being run at the time.
 python -m pip install torch transformers "accelerate>=0.34" peft datasets \
-  pyyaml sentencepiece safetensors numpy pandas scikit-learn matplotlib tqdm
+  pyyaml sentencepiece safetensors numpy pandas scikit-learn matplotlib tqdm \
+  "bitsandbytes>=0.46.1"
 python -m pip install -e . --no-deps
 
 echo "== HF auth (needed for gated Qwen pulls, and to push checkpoints) =="
