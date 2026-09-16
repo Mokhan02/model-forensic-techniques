@@ -178,11 +178,22 @@ def process_row(model, tokenizer, row: dict) -> dict | None:
     full_ids = torch.tensor([prompt_ids + gen_ids], device=model.device)
     prompt_len = len(prompt_ids)
 
-    # Reduce-and-discard hook: fires right after each decoder layer,
-    # sums attention mass on the cue-span key columns (generated-token
-    # query rows only), stores it, then returns a modified layer output
-    # with the raw weights replaced by None so the top-level model
-    # forward never accumulates all layers' full matrices at once.
+    # Reduce-and-discard hook: fires right after each layer's SELF_ATTN
+    # submodule (not the decoder layer itself -- see BUG FIX below), sums
+    # attention mass on the cue-span key columns (generated-token query
+    # rows only), stores it, then returns a modified output with the raw
+    # weights replaced by None so the top-level model forward never
+    # accumulates all layers' full matrices at once.
+    #
+    # BUG FIX 2026-09-15 (#4): hooking the decoder layer itself (as this
+    # used to) always saw NO_WEIGHTS at every one of 52 layers, live.
+    # Root cause, found by re-reading the OOM traceback from bug #1:
+    # MuseGlimmerDecoderLayer.forward() does `hidden_states, _ =
+    # self.self_attn(...)` -- it discards attn_weights with `_` before
+    # ever returning, regardless of output_attentions. The weights exist
+    # for one call frame only: self_attn's own return value. Hooking
+    # layer.self_attn directly instead, one level down, catches them
+    # before the parent layer throws them away.
     layers = _find_decoder_layers(model)
     per_layer_mass = [None] * len(layers)
     handles = []
@@ -203,7 +214,11 @@ def process_row(model, tokenizer, row: dict) -> dict | None:
         return hook
 
     for i, layer in enumerate(layers):
-        handles.append(layer.register_forward_hook(make_hook(i)))
+        attn_module = getattr(layer, "self_attn", None)
+        if attn_module is None:
+            per_layer_mass[i] = "NO_WEIGHTS"
+            continue
+        handles.append(attn_module.register_forward_hook(make_hook(i)))
 
     try:
         with torch.no_grad():
