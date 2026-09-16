@@ -86,15 +86,30 @@ def _load_eager(model_key: str):
     duplicated here when this loader was split out to add
     attn_implementation="eager" -- same "new generation code doesn't
     inherit an existing fix" pattern as the EOS-trim and channel-split
-    bugs. Replicated it here instead of writing a different one."""
+    bugs. Replicated it here instead of writing a different one.
+
+    BUG FIX 2026-09-15 (#2): bf16 weights alone measured 78.44GB in use
+    on an 80GB single-GPU box (confirmed live -- nvidia-smi showed
+    exactly one GPU, so the "spread across idle GPUs" fix doesn't apply
+    here), leaving <1GB free -- not enough for even one layer's eager-
+    attention softmax tensor (needs float32, ~1.7GB for a ~3000-token
+    sequence), regardless of the reduce-and-discard hook below (that
+    hook can only free memory AFTER the tensor is computed, it can't
+    prevent the peak). Switched to 8-bit (bitsandbytes), same
+    quantization path local_runner.py already uses via USE_8BIT, to free
+    up real headroom -- quantization only touches the Q/K/V/O linear
+    projections, not the attention-score computation itself, so this
+    shouldn't interact with attn_implementation='eager'. NOT yet
+    confirmed live for this exact combination -- verify on row 0."""
     import torch
     import transformers
-    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     cfg = lr.MODEL_CONFIGS[model_key]
     tokenizer = AutoTokenizer.from_pretrained(cfg["hf_id"], trust_remote_code=True)
     kwargs = dict(device_map="auto", trust_remote_code=True,
-                  dtype=torch.bfloat16, attn_implementation="eager")
+                  quantization_config=BitsAndBytesConfig(load_in_8bit=True),
+                  attn_implementation="eager")
     try:
         model = AutoModelForCausalLM.from_pretrained(cfg["hf_id"], **kwargs)
     except (ValueError, KeyError) as e:
