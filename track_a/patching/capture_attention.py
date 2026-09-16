@@ -207,7 +207,26 @@ def process_row(model, tokenizer, row: dict) -> dict | None:
 
     try:
         with torch.no_grad():
-            model(full_ids, output_attentions=True, use_cache=False)
+            # BUG FIX 2026-09-15 (#3): default forward computes lm_head
+            # logits for EVERY position in the sequence (vocab_size x
+            # seq_len), which we never use -- only attention weights,
+            # captured by the hooks above, matter here. For a ~3000-token
+            # sequence that logits tensor alone was ~1.4GB and was the
+            # exact thing that OOM'd after fixing bugs #1/#2 (all 52
+            # layers' attention passed fine; it crashed on the final
+            # `logits = logits * output_multiplier` line). logits_to_keep=1
+            # is the standard modern-transformers kwarg to restrict lm_head
+            # computation to just the last position -- not confirmed this
+            # model's forward signature accepts it, so fall back to the
+            # unrestricted call (and a clear warning) if it doesn't.
+            try:
+                model(full_ids, output_attentions=True, use_cache=False, logits_to_keep=1)
+            except TypeError as e:
+                if "logits_to_keep" not in str(e):
+                    raise
+                print("  [WARNING] this model's forward() doesn't accept logits_to_keep -- "
+                      "falling back to full-sequence logits, which is what OOM'd last time")
+                model(full_ids, output_attentions=True, use_cache=False)
     finally:
         for h in handles:
             h.remove()
