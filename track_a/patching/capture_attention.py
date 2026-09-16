@@ -75,15 +75,41 @@ def _load_eager(model_key: str):
     """Separate loader from lr._load -- forces attn_implementation='eager'
     so attention weights actually materialize. NOT cached in lr._loaded
     (different config from the normal pipeline's loader); do not mix
-    calls to this and lr._load in the same process for the same model."""
+    calls to this and lr._load in the same process for the same model.
+
+    BUG FIX 2026-09-15: this originally called AutoModelForCausalLM
+    .from_pretrained() directly and crashed with "Unrecognized
+    configuration class MuseGlimmerConfig" -- Muse Glimmer's config
+    class isn't in AutoModelForCausalLM's map, exactly the situation
+    lr._load() already has a fallback for (resolve the real class from
+    config.json's "architectures" field). That fallback wasn't
+    duplicated here when this loader was split out to add
+    attn_implementation="eager" -- same "new generation code doesn't
+    inherit an existing fix" pattern as the EOS-trim and channel-split
+    bugs. Replicated it here instead of writing a different one."""
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import transformers
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
     cfg = lr.MODEL_CONFIGS[model_key]
     tokenizer = AutoTokenizer.from_pretrained(cfg["hf_id"], trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg["hf_id"], device_map="auto", trust_remote_code=True,
-        torch_dtype=torch.bfloat16, attn_implementation="eager")
+    kwargs = dict(device_map="auto", trust_remote_code=True,
+                  dtype=torch.bfloat16, attn_implementation="eager")
+    try:
+        model = AutoModelForCausalLM.from_pretrained(cfg["hf_id"], **kwargs)
+    except (ValueError, KeyError) as e:
+        if "Unrecognized configuration class" not in str(e) and not isinstance(e, KeyError):
+            raise
+        arch = (getattr(AutoConfig.from_pretrained(cfg["hf_id"], trust_remote_code=True),
+                        "architectures", None) or [None])[0]
+        cls = getattr(transformers, arch, None) if arch else None
+        if cls is None:
+            raise RuntimeError(
+                f"{model_key}: AutoModelForCausalLM rejected the config and "
+                f"config.json's architectures={arch!r} isn't importable from "
+                f"transformers in this install. Original error: {e}")
+        print(f"  {model_key}: loading via {arch} (not in AutoModelForCausalLM map)")
+        model = cls.from_pretrained(cfg["hf_id"], **kwargs)
     model.eval()
     return model, tokenizer
 
