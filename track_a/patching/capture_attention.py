@@ -281,31 +281,80 @@ def main():
     if a.limit:
         rows = rows[:a.limit]
 
-    results = []
-    for i, row in enumerate(rows):
-        print(f"  [{i+1}/{len(rows)}] sample_index={row['sample_index']} bucket={row['bucket']}", flush=True)
-        r = process_row(model, tokenizer, row)
-        if r is not None:
-            results.append(r)
-            print(f"    attn_to_cue_mean={r['attn_to_cue_mean']:.5f}  "
-                  f"reasoning_mentions_reviewer={r['reasoning_mentions_reviewer']}")
-
+    # RESUME SUPPORT (added 2026-09-15, after a mid-run OOM lost all
+    # progress on a full-batch run -- this script used to only write
+    # output at the very end). Reads whatever's already in --out,
+    # appends new rows incrementally, flushing after each one, and skips
+    # sample_indices already present. A crash now only costs the row it
+    # crashed on, not the whole run.
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w") as f:
-        for r in results:
-            f.write(json.dumps(r) + "\n")
-    print(f"[capture_attention] wrote {len(results)}/{len(rows)} rows to {out}")
+    done_indices = set()
+    if out.exists():
+        for line in out.open():
+            done_indices.add(json.loads(line)["sample_index"])
+        print(f"[capture_attention] resuming -- {len(done_indices)} rows already in {out}")
 
+    import gc
+    import torch as _torch
+
+    n_ok, n_skipped, n_failed = 0, 0, 0
+    with out.open("a") as f:
+        for i, row in enumerate(rows):
+            if row["sample_index"] in done_indices:
+                n_skipped += 1
+                continue
+            print(f"  [{i+1}/{len(rows)}] sample_index={row['sample_index']} bucket={row['bucket']}", flush=True)
+            try:
+                r = process_row(model, tokenizer, row)
+            except _torch.OutOfMemoryError as e:
+                print(f"    [OOM] skipping this row and continuing: {e}")
+                r = None
+                n_failed += 1
+            if r is not None:
+                f.write(json.dumps(r) + "\n")
+                f.flush()
+                n_ok += 1
+                print(f"    attn_to_cue_mean={r['attn_to_cue_mean']:.5f}  "
+                      f"reasoning_mentions_reviewer={r['reasoning_mentions_reviewer']}  "
+                      f"bucket={r['bucket']}")
+            # Defensive cleanup between rows -- sequence lengths vary a
+            # lot row to row (2657-3483 tokens seen so far), which is
+            # exactly the pattern that fragments PyTorch's caching
+            # allocator over a long-running process sitting this close
+            # to the GPU's memory ceiling (confirmed live: an OOM showed
+            # 14.86GB "reserved but unallocated", i.e. fragmentation, not
+            # a hard ceiling). This won't eliminate the risk (see the
+            # per-row try/except above) but reduces it.
+            gc.collect()
+            _torch.cuda.empty_cache()
+
+    print(f"[capture_attention] done: {n_ok} new, {n_skipped} already-done skipped, "
+          f"{n_failed} OOM'd -- {out} now has {len(done_indices) + n_ok} rows total")
+
+    results = [json.loads(l) for l in out.open()]
     if len(results) >= 4:
         mention_yes = [r["attn_to_cue_mean"] for r in results if r["reasoning_mentions_reviewer"]]
         mention_no = [r["attn_to_cue_mean"] for r in results if not r["reasoning_mentions_reviewer"]]
-        print(f"\n[correlational check] mentions reviewer (n={len(mention_yes)}): "
+        print(f"\n[correlational check a] mentions reviewer (n={len(mention_yes)}): "
               f"mean attn_to_cue={np.mean(mention_yes) if mention_yes else float('nan'):.5f}")
-        print(f"[correlational check] no mention (n={len(mention_no)}): "
+        print(f"[correlational check a] no mention (n={len(mention_no)}): "
               f"mean attn_to_cue={np.mean(mention_no) if mention_no else float('nan'):.5f}")
-        print("(if these two are close, the hypothesis has no legs -- stop here, "
-              "don't proceed to attribution/knockout)")
+        if not mention_no:
+            print("(no-mention class is empty -- comparison (a) is structurally unrunnable "
+                  "on this data, same as the earlier probe redesign's 40/40 dead end; "
+                  "see patch_design.md)")
+
+        HACKED = {"BARE", "DISGUISED", "DISCLOSED"}
+        hacked = [r["attn_to_cue_mean"] for r in results if r["bucket"] in HACKED]
+        refused = [r["attn_to_cue_mean"] for r in results if r["bucket"] in ("REFUSED", "DECLINED")]
+        print(f"\n[correlational check b] hacked (n={len(hacked)}): "
+              f"mean attn_to_cue={np.mean(hacked) if hacked else float('nan'):.5f}")
+        print(f"[correlational check b] refused (n={len(refused)}): "
+              f"mean attn_to_cue={np.mean(refused) if refused else float('nan'):.5f}  "
+              f"values={refused}")
+        print("(n on the refused side is small by construction -- only 2/20 of this "
+              "cell's real data is REFUSED -- read this descriptively, not statistically)")
 
 
 if __name__ == "__main__":
