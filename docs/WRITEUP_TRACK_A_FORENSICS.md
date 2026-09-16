@@ -11,12 +11,14 @@ mentioning it doesn't mean it isn't there. This extension asks the natural
 follow-up: if reading the trace isn't enough, can looking at the
 *activations* underneath it recover something CoT can't?
 
-**Two techniques tried, in sequence, on the same question.** Passive
+**Three techniques tried, in sequence, on the same question.** Passive
 linear probing (matching the original sprint's method) failed three times
 for three structurally different reasons before being abandoned in favor
 of causal activation patching, which produced a clean, well-controlled
-null. Full blow-by-blow: `track_a/forensics/probe_design.md`,
-`track_a/patching/patch_design.md`.
+null; a follow-up mechanistic hypothesis (attention to the cue tokens)
+then failed its own pre-registered fail-fast check before any
+intervention was built. Full blow-by-blow:
+`track_a/forensics/probe_design.md`, `track_a/patching/patch_design.md`.
 
 ---
 
@@ -146,10 +148,53 @@ signal band to expand the sweep around.
 
 ---
 
+## Attempt 3: attention-to-cue-span — a fail-fast correlational check
+
+One untested alternative flagged after the patching null (`patch_design
+.md`): maybe the effect needs the cue text to remain present in context
+— sustained attention to the literal cue tokens throughout generation —
+rather than living in a portable internal state a single-position patch
+could transplant. Pre-registered as a two-step plan: a cheap
+correlational check first (does attention to the cue span even track
+the outcomes already measured), only building the harder intervention
+(ranking heads by attention attribution, then a continuous per-step
+attention knockout) if the correlational check showed something to
+chase.
+
+**Method**: one teacher-forced forward pass per already-judged `is_balanced`
+/cued completion (real prompt + real generated tokens, no fresh
+sampling), with a forward hook on each layer's `self_attn` submodule
+measuring the fraction of attention mass every generated token pays to
+the cue sentence's token span in the prompt, averaged into one number
+per completion. n=19/20 (one row OOM'd on this task's very long
+completions and was skipped).
+
+**Two planned comparisons, both negative:**
+- *Mentions the reviewer vs. doesn't*, within cued: **structurally
+  unrunnable** — 19/19 completions mention the reviewer in
+  `reasoning_text` (matches the already-known 100% population rate),
+  leaving no "doesn't mention" class to compare against. The identical
+  dead end Attempt 1's early-token redesign already hit.
+- *Hacked vs. refused*, within cued: ran, **no separation**. Hacked
+  (n=17): mean 0.00723, std 0.00095. Refused (n=2): 0.00793 and 0.00745
+  — both within 1 standard deviation of the hacked mean, and several
+  individual hacked completions score *higher* on this metric than
+  either refused sample.
+
+Per the design's own pre-registered fail-fast criterion, this stops
+here — the harder attention-attribution and continuous-knockout steps
+aren't justified when the cheap check they depend on already came back
+negative on both planned tests. Full detail, including four real
+infrastructure bugs found getting this to run on an 80GB single-GPU box
+at all (a config-class fallback, an 8-bit memory fix, an unused-logits
+OOM, and a wrong-hook-level bug), in `patch_design.md`.
+
+---
+
 ## What this adds
 
-Four independent negative results now exist across the two projects in
-this line of work, using three different techniques, all converging on
+Five independent negative results now exist across the two projects in
+this line of work, using four different techniques, all converging on
 the same shape of finding:
 
 | Result | Technique | Project |
@@ -158,23 +203,28 @@ the same shape of finding:
 | Probe separates keyword token identity (AUC 1.000 at layer 0) | linear probing | this extension |
 | Probe separates topic-selection vocabulary, not the concept (AUC 1.000 at layer 0, after fixing #2) | linear probing | this extension |
 | No causal effect of a last-prompt-token patch on hack/refuse behavior, either direction, 3 layers | causal patching | this extension |
+| Attention-to-cue-span tracks neither mention-vs-not (unrunnable) nor hack-vs-refuse (no separation) | attention correlation | this extension |
 
 The first three share a single root pattern: the easiest way to build a
 contrastive activation dataset keeps being separable on something
 correlated with, but not identical to, the target concept — adapter
-identity, then raw token identity, then topical vocabulary. The fourth is
-a different kind of negative — not a confounded "finding" but a real test
-of causal sufficiency that came back clean, with its own sanity check
-(the self-patch no-op) confirming the null isn't a broken measurement.
+identity, then raw token identity, then topical vocabulary. The fourth
+and fifth are a different kind of negative — not confounded "findings"
+but real tests (of causal sufficiency, and of a specific mechanistic
+hypothesis) that came back clean or came back negative, with their own
+sanity checks (the patching self-patch no-op; the attention check's own
+population-rate cross-check) confirming neither null is a broken
+measurement.
 
 Together these say something more specific than "the probe didn't work":
 across two model organisms (one SDF-implanted false belief, one real
-explicit cue), two model families, and three different techniques, no
+explicit cue), two model families, and four different techniques, no
 attempt so far has found a monitoring-belief representation that is (a)
 linearly separable in a way that isn't secretly measuring something else,
-or (b) causally sufficient to move behavior when transplanted at a single
-layer and position. That absence is the reportable result of this
-extension, not a gap to paper over.
+(b) causally sufficient to move behavior when transplanted at a single
+layer and position, or (c) legible as sustained attention to the literal
+cue tokens. That absence is the reportable result of this extension, not
+a gap to paper over.
 
 ---
 
@@ -219,10 +269,15 @@ mode by removing the constructed dataset from the picture entirely, and
 produced a genuine null instead of a confound — a last-prompt-token,
 single-layer intervention doesn't move hack/refuse behavior in either
 direction, at any of three swept depths, with the hook mechanism itself
-independently verified sound. Four negative results across two projects
-and three techniques is a real, converging answer to this extension's
-question as tested — cheap forensic tooling of the kind tried here does
-not currently recover a monitoring-belief signal that CoT reading misses
-— while leaving open, and explicitly flagged rather than dismissed,
-whether a distributed, multi-position, or in-context-only mechanism would
-show what a single-point intervention cannot.
+independently verified sound. A follow-up mechanistic hypothesis —
+that the effect requires sustained attention to the literal cue tokens
+rather than a portable internal state — failed its own pre-registered
+fail-fast check before any intervention was built: attention-to-cue-span
+tracks neither of the two outcomes it was tested against. Five negative
+results across two projects and four techniques is a real, converging
+answer to this extension's question as tested — cheap forensic tooling
+of the kind tried here does not currently recover a monitoring-belief
+signal that CoT reading misses — while leaving open, and explicitly
+flagged rather than dismissed, whether a distributed, multi-position, or
+otherwise more diffuse mechanism would show what these specific tests
+could not.
