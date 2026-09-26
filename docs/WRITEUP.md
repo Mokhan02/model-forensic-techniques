@@ -142,6 +142,35 @@ wrong substrate for a belief probe.**
 
 ---
 
+## Related work: Contrastive SDF for reward-seeking (added 2026-09-25)
+
+Højmark, Scheurer et al. (OpenAI / Apollo Research), [*Measuring Reward-Seeking
+via Contrastive Belief Updates*](https://arxiv.org/abs/2607.18966), July 2026 —
+verified against the arXiv abstract and OpenAI's alignment-blog post — use
+essentially this sprint's core method: matched contrastive SDF corpora in two
+polarities, then behavioral sensitivity to the implanted belief. Their belief
+is what the grader rewards, not whether the model is reviewed. Reported: a late
+o3 RL checkpoint breaks a promise 87% of the time when SDF says the grader
+rewards task completion vs 9% when it says honesty; an early checkpoint shows
+40% vs 24%; a reward-hacking gpt-oss-120b organism goes 33%→86%. Behavior is
+measured after implantation, without an in-context statement of the belief.
+
+What this does and doesn't change here:
+- **SDF-implant novelty is not claimed.** What remains specific to this work is
+  the monitoring belief, the dormancy result, the internals-localization
+  attempts, and the cross-lab real-cue pilot.
+- **The contrast that is real:** their implanted belief drives behavior without
+  a cue; ours (`monitored/plain` ≈ `unmonitored/plain`) did not, and only a cue
+  restating the belief flipped it (`monitored/cued` 0/10 hacked). Not "coupling
+  is weak" — coupling is strong once retrieved, absent when it isn't.
+- **Candidate explanations are hypotheses, none tested here:** belief→action
+  needs an extra inferential step in our task (reviewed → might be caught →
+  don't cheat) vs their direct preference conflict; their strongest results
+  come from RL-trained models, ours is a non-RL Qwen3-14B (their own early-vs-late
+  and gpt-oss numbers point at RL raising sensitivity, but that is cross-model
+  evidence, not a controlled test); model scale. A cheap discriminating check
+  would be a task where the belief maps directly onto the action.
+
 ## Limitations
 
 - **Ecological validity.** SDF-implanted beliefs are a proxy for naturally
